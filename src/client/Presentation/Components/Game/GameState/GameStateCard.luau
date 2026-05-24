@@ -10,6 +10,7 @@
 
 local RoUI = require(script.Parent.Parent.Parent.Parent.Core.RoUI)
 local Theme = require(script.Parent.Parent.Parent.Parent.Core.Theme)
+local UIHelpers = require(script.Parent.Parent.Parent.Parent.Utils.UIHelpers)
 local Badge = require(script.Parent.Parent.Parent.Shared.Badge)
 local Timer = require(script.Parent.Parent.Parent.Shared.Timer)
 local ProgressBar = require(script.Parent.Parent.Parent.Shared.ProgressBar)
@@ -25,11 +26,6 @@ export type GameStateCardProps = {
 
 local GameStateCard = {}
 GameStateCard.__index = GameStateCard
-
-local function formatTime(seconds: number): string
-	seconds = math.max(0, math.floor(seconds))
-	return string.format("%02d:%02d", math.floor(seconds / 60), seconds % 60)
-end
 
 local function progressColorForState(state: string): Color3
 	if state == "Intermission" then
@@ -47,7 +43,7 @@ function GameStateCard.new(props: GameStateCardProps)
 
 	self.lowTimeThreshold = props.lowTimeThreshold
 
-	local timerText = formatTime(props.timer)
+	local timerText = UIHelpers.formatTime(props.timer)
 	local timerColor = props.timer <= props.lowTimeThreshold and Theme.LowTime or Theme.Info
 	local progress = math.clamp(props.timer / math.max(props.maxTimer, 1), 0, 1)
 	local fillColor = progressColorForState(props.state)
@@ -134,7 +130,7 @@ end
 -- Tick del countdown (sin animación: el countdown del controller actualiza cada 0.1s,
 -- animar cada cambio causa solapamiento visual)
 function GameStateCard:UpdateTimer(timer: number, maxTimer: number)
-	self.timer.Text = formatTime(timer)
+	self.timer.Text = UIHelpers.formatTime(timer)
 	self.timer.TextColor3 = timer <= self.lowTimeThreshold and Theme.LowTime or Theme.Info
 
 	if self.progressFill then

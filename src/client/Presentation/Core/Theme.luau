@@ -1,3 +1,4 @@
+--!strict
 -- Theme.luau
 -- Tokens visuales centralizados: colores, espaciado, radios, tamaños de texto.
 -- Si quieres cambiar la densidad visual del juego, edita aquí — no toques los componentes.
@@ -28,36 +29,36 @@ local Theme = {
 	-- Gradientes
 	GradientA = Color3.fromRGB(80, 140, 255),
 	GradientB = Color3.fromRGB(32, 220, 200),
-}
 
--- Design tokens — escala consistente para spacing/radius/textSize
-Theme.Radius = {
-	sm = 6,
-	md = 10,
-	lg = 14,
-	pill = 999,
-}
+	-- Design tokens — escala consistente para spacing/radius/textSize
+	Radius = {
+		sm = 6,
+		md = 10,
+		lg = 14,
+		pill = 999,
+	},
 
-Theme.Spacing = {
-	xs = 4,
-	sm = 8,
-	md = 12,
-	lg = 16,
-	xl = 24,
-}
+	Spacing = {
+		xs = 4,
+		sm = 8,
+		md = 12,
+		lg = 16,
+		xl = 24,
+	},
 
-Theme.TextSize = {
-	xs = 12,
-	sm = 14,
-	md = 18,
-	lg = 22,
-	xl = 28,
-}
+	TextSize = {
+		xs = 12,
+		sm = 14,
+		md = 18,
+		lg = 22,
+		xl = 28,
+	},
 
-Theme.Stroke = {
-	thin = 1,
-	medium = 2,
-	thick = 3,
+	Stroke = {
+		thin = 1,
+		medium = 2,
+		thick = 3,
+	},
 }
 
 return Theme

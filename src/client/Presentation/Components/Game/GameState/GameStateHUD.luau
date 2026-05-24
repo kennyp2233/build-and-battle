@@ -3,8 +3,11 @@
 -- destruirla y recrearla cada cambio de fase — preserva animaciones, hover, y el
 -- estado del toggle de visibilidad.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local RoUI = require(script.Parent.Parent.Parent.Parent.Core.RoUI)
 local Theme = require(script.Parent.Parent.Parent.Parent.Core.Theme)
+local Maid = require(ReplicatedStorage.Shared.Utils.Maid)
 local GameStateCard = require(script.Parent.GameStateCard)
 
 local GameStateHUD = {}
@@ -27,6 +30,7 @@ function GameStateHUD.new(parent: Instance)
 		visible = true,
 	}
 
+	self.maid = Maid.new()
 	self:_createUI(parent)
 	return self
 end
@@ -74,27 +78,27 @@ function GameStateHUD:_createUI(parent: Instance)
 		},
 	})
 
-	self.toggleButton.MouseEnter:Connect(function()
+	self.maid:Give(self.toggleButton.MouseEnter:Connect(function()
 		RoUI.animate(self.toggleButton, {
 			BackgroundColor3 = Theme.Primary,
 			Size = UDim2.new(0, 44, 0, 44),
 		}, {
 			duration = 0.2,
 		}):play()
-	end)
+	end))
 
-	self.toggleButton.MouseLeave:Connect(function()
+	self.maid:Give(self.toggleButton.MouseLeave:Connect(function()
 		RoUI.animate(self.toggleButton, {
 			BackgroundColor3 = Theme.Card,
 			Size = UDim2.new(0, 40, 0, 40),
 		}, {
 			duration = 0.2,
 		}):play()
-	end)
+	end))
 
-	self.toggleButton.Activated:Connect(function()
+	self.maid:Give(self.toggleButton.Activated:Connect(function()
 		self:Toggle()
-	end)
+	end))
 
 	self.container = RoUI.Frame({
 		Name = "GameStateHUD",
@@ -151,6 +155,9 @@ function GameStateHUD:UpdateTimer(timer: number, maxTimer: number?)
 end
 
 function GameStateHUD:Destroy()
+	if self.maid then
+		self.maid:Clean()
+	end
 	if self.card then
 		self.card:Destroy()
 		self.card = nil

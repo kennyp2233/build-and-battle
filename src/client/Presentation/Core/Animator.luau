@@ -1,3 +1,4 @@
+--!strict
 -- Animator.luau
 -- Sistema declarativo de animaciones para RoUI.
 -- Todos los presets retornan un objeto Animation con play/pause/cancel/onComplete consistente,
@@ -45,7 +46,7 @@ local function mergedConfig(config: AnimationConfig?): AnimationConfig
 	local merged = table.clone(DEFAULT_CONFIG)
 	if config then
 		for key, value in pairs(config) do
-			merged[key] = value
+			(merged :: any)[key] = value
 		end
 	end
 	return merged
@@ -79,7 +80,7 @@ function Animator.animate(
 	local finalConfig = mergedConfig(config)
 
 	local tweenInfo = TweenInfo.new(
-		finalConfig.duration,
+		finalConfig.duration :: number,
 		finalConfig.style,
 		finalConfig.direction,
 		finalConfig.repeatCount,
@@ -89,57 +90,59 @@ function Animator.animate(
 
 	local tween = TweenService:Create(instance, tweenInfo, targetProps)
 
-	local animation: Animation
-	animation = {
-		tween = tween,
-		play = function(self)
-			tween:Play()
-			return self
-		end,
-		pause = function(self)
-			tween:Pause()
-			return self
-		end,
-		cancel = function(self)
-			tween:Cancel()
-			return self
-		end,
-		onComplete = function(self, callback)
-			tween.Completed:Connect(callback)
-			return self
-		end,
-	}
-	return animation
+	local animation: any = { tween = tween }
+	function animation:play()
+		tween:Play()
+		return self
+	end
+	function animation:pause()
+		tween:Pause()
+		return self
+	end
+	function animation:cancel()
+		tween:Cancel()
+		return self
+	end
+	function animation:onComplete(callback: () -> ())
+		tween.Completed:Connect(callback)
+		return self
+	end
+
+	return animation :: Animation
 end
 
--- Crea un Animation "dummy" usado por shake/sequence/parallel — mismo shape que el real
-local function makeCustomAnimation(handlers: {
+type CustomHandlers = {
 	play: () -> (),
 	pause: (() -> ())?,
 	cancel: (() -> ())?,
 	onComplete: (callback: () -> ()) -> (),
-}): Animation
-	local animation: Animation
-	animation = {
-		tween = nil,
-		play = function(self)
-			handlers.play()
-			return self
-		end,
-		pause = function(self)
-			if handlers.pause then handlers.pause() end
-			return self
-		end,
-		cancel = function(self)
-			if handlers.cancel then handlers.cancel() end
-			return self
-		end,
-		onComplete = function(self, callback)
-			handlers.onComplete(callback)
-			return self
-		end,
-	}
-	return animation
+}
+
+-- Crea un Animation "dummy" usado por shake/sequence/parallel — mismo shape que el real
+local function makeCustomAnimation(handlers: CustomHandlers): Animation
+	local animation: any = { tween = nil :: Tween? }
+	function animation:play()
+		handlers.play()
+		return self
+	end
+	function animation:pause()
+		if handlers.pause then
+			handlers.pause()
+		end
+		return self
+	end
+	function animation:cancel()
+		if handlers.cancel then
+			handlers.cancel()
+		end
+		return self
+	end
+	function animation:onComplete(callback: () -> ())
+		handlers.onComplete(callback)
+		return self
+	end
+
+	return animation :: Animation
 end
 
 -- ============================================================================
@@ -233,8 +236,8 @@ function Animator.slideIn(
 	})
 end
 
--- Shake: usa UIScale aplicado al GuiObject. Sobrevive a layouts que sobrescriben Position.
--- Requiere que el instance pueda contener un UIScale (cualquier GuiObject).
+-- Shake: sobrescribe Position frame por frame. Si el instance está dentro de un layout
+-- (UIListLayout/UIGridLayout), el layout sobrescribirá las posiciones y no se verá el shake.
 function Animator.shake(instance: GuiObject, intensity: number?, duration: number?): Animation
 	local int = intensity or 5
 	local dur = duration or 0.5
@@ -242,8 +245,6 @@ function Animator.shake(instance: GuiObject, intensity: number?, duration: numbe
 	local cancelled = false
 
 	local function play()
-		-- Aplicamos translaciones via un UIScale hijo no es válido (UIScale no traslada);
-		-- usamos AnchorPoint-based: añadimos un offset temporal restaurando al final.
 		local originalPos = instance.Position
 		task.spawn(function()
 			local startTime = os.clock()

@@ -1,3 +1,4 @@
+--!strict
 -- UIModifiers.luau
 -- Utilidades para modificar/decorar componentes UI
 

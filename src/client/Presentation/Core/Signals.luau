@@ -1,6 +1,10 @@
+--!strict
 -- Signals.luau
--- Observable values con suscripciones. Mantén `_value` y `_listeners` como privados
--- (con underscore) — no los toques desde afuera o se rompe la reactividad.
+-- Observable values con suscripciones. `_value` y `_listeners` son privados —
+-- no los toques desde afuera o se rompe la reactividad.
+--
+-- Pasa un `name` al crear el signal para que los errores de listeners incluyan
+-- contexto en el warning.
 
 local Signals = {}
 
@@ -14,16 +18,22 @@ export type Signal<T> = {
 	subscribe: (self: Signal<T>, callback: (T) -> ()) -> () -> (),
 	_value: T,
 	_listeners: { (T) -> () },
+	_name: string?,
+}
+
+export type ComputedSignal<T> = Signal<T> & {
+	destroy: (self: ComputedSignal<T>) -> (),
 }
 
 -- ============================================================================
 -- CREATION
 -- ============================================================================
 
-function Signals.create<T>(initialValue: T): Signal<T>
-	local signal = {
+function Signals.create<T>(initialValue: T, name: string?): Signal<T>
+	local signal: any = {
 		_value = initialValue,
 		_listeners = {},
+		_name = name,
 	}
 
 	function signal:get(): T
@@ -37,10 +47,22 @@ function Signals.create<T>(initialValue: T): Signal<T>
 		self._value = newValue
 
 		-- Copia defensiva: un listener puede agregar/quitar otros durante la notificación
-		-- sin corromper el iterador.
 		local snapshot = table.clone(self._listeners)
+		local signalName: string = self._name or "anonymous"
+
 		for _, listener in ipairs(snapshot) do
-			task.spawn(listener, newValue)
+			task.spawn(function()
+				local ok, err = xpcall(function()
+					listener(newValue)
+				end, debug.traceback)
+				if not ok then
+					warn(string.format(
+						"[Signal '%s'] listener error:\n%s",
+						signalName,
+						tostring(err)
+					))
+				end
+			end)
 		end
 	end
 
@@ -54,22 +76,22 @@ function Signals.create<T>(initialValue: T): Signal<T>
 		end
 	end
 
-	return signal
+	return (signal :: any) :: Signal<T>
 end
 
 -- ============================================================================
 -- COMPUTED (derived signals)
 -- ============================================================================
 
-export type ComputedSignal<T> = Signal<T> & {
-	destroy: (self: ComputedSignal<T>) -> (),
-}
-
 -- Crea un signal derivado que recomputa cuando cualquier dependencia cambia.
 -- Devuelve un signal extendido con :destroy() — llamarlo cuando dejes de usarlo
 -- para no filtrar suscripciones a las dependencias.
-function Signals.computed<T>(dependencies: { Signal<any> }, compute: () -> T): ComputedSignal<T>
-	local derived = Signals.create(compute())
+function Signals.computed<T>(
+	dependencies: { Signal<any> },
+	compute: () -> T,
+	name: string?
+): ComputedSignal<T>
+	local derived: any = Signals.create(compute(), name)
 	local unsubscribers: { () -> () } = {}
 
 	for _, dependency in ipairs(dependencies) do
@@ -86,7 +108,7 @@ function Signals.computed<T>(dependencies: { Signal<any> }, compute: () -> T): C
 		self._listeners = {}
 	end
 
-	return derived
+	return (derived :: any) :: ComputedSignal<T>
 end
 
 return Signals

@@ -1,3 +1,4 @@
+--!strict
 -- RoUI.luau
 -- Librería ligera React-inspired para Roblox. Sin Virtual DOM ni reconciliación:
 -- componentes son funciones que crean instancias reales. Reactividad vía Signals + observe.
@@ -13,6 +14,8 @@ export type Animation = Animator.Animation
 export type AnimationConfig = Animator.AnimationConfig
 export type ComponentProps = { [string]: any }
 
+type EventMap = { [string]: (...any) -> () }
+
 -- ============================================================================
 -- PROP APPLICATION
 -- ============================================================================
@@ -27,7 +30,7 @@ end
 -- Aplica una prop normal. Si falla, warn con valor incluido para debugging — no silenciado.
 local function applySingleProp(instance: Instance, key: string, value: any)
 	local ok, err = pcall(function()
-		instance[key] = value
+		(instance :: any)[key] = value
 	end)
 	if not ok then
 		warn(string.format(
@@ -44,9 +47,9 @@ end
 --   3. Parent al final.
 --   4. Eventos conectados al final (después de que todo está estructurado).
 function RoUI.applyProps(instance: Instance, props: ComponentProps)
-	local deferredChildren
-	local deferredParent
-	local deferredEvents
+	local deferredChildren: any = nil
+	local deferredParent: Instance? = nil
+	local deferredEvents: EventMap? = nil
 
 	for key, value in pairs(props) do
 		if key == "children" then
@@ -54,8 +57,10 @@ function RoUI.applyProps(instance: Instance, props: ComponentProps)
 		elseif key == "Parent" then
 			deferredParent = value
 		elseif isEventKey(key) and typeof(value) == "function" then
-			deferredEvents = deferredEvents or {}
-			deferredEvents[key] = value
+			if not deferredEvents then
+				deferredEvents = {}
+			end
+			(deferredEvents :: EventMap)[key] = value
 		else
 			applySingleProp(instance, key, value)
 		end
@@ -65,11 +70,11 @@ function RoUI.applyProps(instance: Instance, props: ComponentProps)
 		if typeof(deferredChildren) == "table" then
 			for _, child in ipairs(deferredChildren) do
 				if typeof(child) == "Instance" then
-					child.Parent = instance
+					(child :: Instance).Parent = instance
 				end
 			end
 		elseif typeof(deferredChildren) == "Instance" then
-			deferredChildren.Parent = instance
+			(deferredChildren :: Instance).Parent = instance
 		end
 	end
 
