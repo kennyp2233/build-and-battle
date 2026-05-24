@@ -1,5 +1,6 @@
 -- ProgressBar.luau
--- Componente reutilizable de barra de progreso con animación
+-- Barra de progreso. El color se aplica al Fill (visible). El gradient theme es opt-in
+-- vía `withGradient` — antes era forzado y tapaba el `color`.
 
 local RoUI = require(script.Parent.Parent.Parent.Core.RoUI)
 local Theme = require(script.Parent.Parent.Parent.Core.Theme)
@@ -7,38 +8,36 @@ local Theme = require(script.Parent.Parent.Parent.Core.Theme)
 export type ProgressBarProps = {
 	progress: number,
 	color: Color3,
-	animated: boolean?,
-	duration: number?,
-	style: Enum.EasingStyle?,
+	withGradient: boolean?,
+	height: number?,
 }
 
-local function ProgressBar(props: ProgressBarProps)
-	-- Valores por defecto
-	local animated = if props.animated ~= nil then props.animated else true
-	local duration = props.duration or 0.8
-	local style = props.style or Enum.EasingStyle.Linear
-	
+local function ProgressBar(props: ProgressBarProps): Frame
+	local fillChildren: { Instance } = {
+		RoUI.corner(Theme.Radius.sm),
+	}
+	if props.withGradient then
+		table.insert(fillChildren, RoUI.gradient(Theme.GradientA, Theme.GradientB, 0))
+	end
+
 	local fillFrame = RoUI.Frame({
 		Name = "Fill",
 		BackgroundColor3 = props.color,
-		Size = UDim2.new(props.progress, 0, 1, 0),
+		Size = UDim2.new(math.clamp(props.progress, 0, 1), 0, 1, 0),
 		BorderSizePixel = 0,
-		children = {
-			RoUI.corner(8),
-			RoUI.gradient(Theme.GradientA, Theme.GradientB, 0),
-		}
+		children = fillChildren,
 	})
 
 	return RoUI.Frame({
 		Name = "ProgressBar",
 		BackgroundColor3 = Theme.ProgressBG,
-		Size = UDim2.new(1, 0, 0, 16),
+		Size = UDim2.new(1, 0, 0, props.height or 16),
 		BorderSizePixel = 0,
 		children = {
-			RoUI.corner(8),
-			RoUI.stroke(1, Theme.CardStroke, 0.4),
+			RoUI.corner(Theme.Radius.sm),
+			RoUI.stroke(Theme.Stroke.thin, Theme.CardStroke, 0.4),
 			fillFrame,
-		}
+		},
 	})
 end
 

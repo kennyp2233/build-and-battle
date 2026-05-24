@@ -1,5 +1,7 @@
 -- Animator.luau
--- Sistema declarativo de animaciones para RoUI
+-- Sistema declarativo de animaciones para RoUI.
+-- Todos los presets retornan un objeto Animation con play/pause/cancel/onComplete consistente,
+-- independientemente de si por debajo usan TweenService o un task.spawn (shake, sequence, parallel).
 
 local TweenService = game:GetService("TweenService")
 
@@ -19,15 +21,15 @@ export type AnimationConfig = {
 }
 
 export type Animation = {
-	tween: Tween,
-	play: (self: Animation) -> (),
-	pause: (self: Animation) -> (),
-	cancel: (self: Animation) -> (),
+	tween: Tween?,
+	play: (self: Animation) -> Animation,
+	pause: (self: Animation) -> Animation,
+	cancel: (self: Animation) -> Animation,
 	onComplete: (self: Animation, callback: () -> ()) -> Animation,
 }
 
 -- ============================================================================
--- CONFIGURACIÓN POR DEFECTO
+-- DEFAULTS
 -- ============================================================================
 
 local DEFAULT_CONFIG: AnimationConfig = {
@@ -39,26 +41,43 @@ local DEFAULT_CONFIG: AnimationConfig = {
 	delayTime = 0,
 }
 
--- ============================================================================
--- ANIMACIÓN BÁSICA
--- ============================================================================
-
--- Animar un componente con propiedades objetivo
-function Animator.animate(
-	instance: Instance, 
-	targetProps: {[string]: any},
-	config: AnimationConfig?
-): Animation
-	local finalConfig = config or {}
-	
-	-- Aplicar defaults
-	for key, value in pairs(DEFAULT_CONFIG) do
-		if finalConfig[key] == nil then
-			finalConfig[key] = value
+local function mergedConfig(config: AnimationConfig?): AnimationConfig
+	local merged = table.clone(DEFAULT_CONFIG)
+	if config then
+		for key, value in pairs(config) do
+			merged[key] = value
 		end
 	end
-	
-	-- Crear TweenInfo
+	return merged
+end
+
+-- ============================================================================
+-- TRANSPARENCY PROPERTY DETECTION
+-- ============================================================================
+
+-- TweenService falla si pides animar una propiedad inexistente: Frame no tiene Transparency.
+-- Esta función elige la prop de transparencia correcta para el ClassName del instance.
+local function transparencyPropertyFor(instance: Instance): string
+	if instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
+		return "ImageTransparency"
+	elseif instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
+		return "TextTransparency"
+	else
+		return "BackgroundTransparency"
+	end
+end
+
+-- ============================================================================
+-- BASIC ANIMATION
+-- ============================================================================
+
+function Animator.animate(
+	instance: Instance,
+	targetProps: { [string]: any },
+	config: AnimationConfig?
+): Animation
+	local finalConfig = mergedConfig(config)
+
 	local tweenInfo = TweenInfo.new(
 		finalConfig.duration,
 		finalConfig.style,
@@ -67,76 +86,100 @@ function Animator.animate(
 		finalConfig.reverses,
 		finalConfig.delayTime
 	)
-	
-	-- Crear tween
+
 	local tween = TweenService:Create(instance, tweenInfo, targetProps)
-	
-	-- Crear objeto de animación
-	local animation = {
-		tween = tween
+
+	local animation: Animation
+	animation = {
+		tween = tween,
+		play = function(self)
+			tween:Play()
+			return self
+		end,
+		pause = function(self)
+			tween:Pause()
+			return self
+		end,
+		cancel = function(self)
+			tween:Cancel()
+			return self
+		end,
+		onComplete = function(self, callback)
+			tween.Completed:Connect(callback)
+			return self
+		end,
 	}
-	
-	function animation:play()
-		self.tween:Play()
-		return self
-	end
-	
-	function animation:pause()
-		self.tween:Pause()
-		return self
-	end
-	
-	function animation:cancel()
-		self.tween:Cancel()
-		return self
-	end
-	
-	function animation:onComplete(callback: () -> ())
-		self.tween.Completed:Connect(callback)
-		return self
-	end
-	
+	return animation
+end
+
+-- Crea un Animation "dummy" usado por shake/sequence/parallel — mismo shape que el real
+local function makeCustomAnimation(handlers: {
+	play: () -> (),
+	pause: (() -> ())?,
+	cancel: (() -> ())?,
+	onComplete: (callback: () -> ()) -> (),
+}): Animation
+	local animation: Animation
+	animation = {
+		tween = nil,
+		play = function(self)
+			handlers.play()
+			return self
+		end,
+		pause = function(self)
+			if handlers.pause then handlers.pause() end
+			return self
+		end,
+		cancel = function(self)
+			if handlers.cancel then handlers.cancel() end
+			return self
+		end,
+		onComplete = function(self, callback)
+			handlers.onComplete(callback)
+			return self
+		end,
+	}
 	return animation
 end
 
 -- ============================================================================
--- ANIMACIONES PREDEFINIDAS (PRESETS)
+-- PRESETS
 -- ============================================================================
 
--- Fade in
-function Animator.fadeIn(instance: Instance, duration: number?): Animation
-	return Animator.animate(instance, {
-		Transparency = 0
-	}, {
+-- Fade in: anima la transparencia correcta del instance hasta 0.
+-- `property` opcional para forzar otra (e.g. "TextTransparency" en TextButton además de Background).
+function Animator.fadeIn(instance: Instance, duration: number?, property: string?): Animation
+	local prop = property or transparencyPropertyFor(instance)
+	return Animator.animate(instance, { [prop] = 0 }, {
 		duration = duration or 0.3,
 		style = Enum.EasingStyle.Quad,
 		direction = Enum.EasingDirection.Out,
 	})
 end
 
--- Fade out
-function Animator.fadeOut(instance: Instance, duration: number?): Animation
-	return Animator.animate(instance, {
-		Transparency = 1
-	}, {
+function Animator.fadeOut(instance: Instance, duration: number?, property: string?): Animation
+	local prop = property or transparencyPropertyFor(instance)
+	return Animator.animate(instance, { [prop] = 1 }, {
 		duration = duration or 0.3,
 		style = Enum.EasingStyle.Quad,
 		direction = Enum.EasingDirection.In,
 	})
 end
 
--- Scale up (bounce)
-function Animator.scaleUp(instance: Instance, targetScale: number?, duration: number?): Animation
+-- Escala uniforme aplicada tanto a Scale como a Offset
+local function scaleUDim2(udim: UDim2, factor: number): UDim2
+	return UDim2.new(
+		udim.X.Scale * factor,
+		udim.X.Offset * factor,
+		udim.Y.Scale * factor,
+		udim.Y.Offset * factor
+	)
+end
+
+function Animator.scaleUp(instance: GuiObject, targetScale: number?, duration: number?): Animation
 	local scale = targetScale or 1.1
-	local originalSize = instance.Size
-	
 	return Animator.animate(instance, {
-		Size = UDim2.new(
-			originalSize.X.Scale * scale,
-			originalSize.X.Offset * scale,
-			originalSize.Y.Scale * scale,
-			originalSize.Y.Offset * scale
-		)
+		Size = scaleUDim2(instance.Size, scale),
 	}, {
 		duration = duration or 0.2,
 		style = Enum.EasingStyle.Back,
@@ -144,18 +187,10 @@ function Animator.scaleUp(instance: Instance, targetScale: number?, duration: nu
 	})
 end
 
--- Scale down
-function Animator.scaleDown(instance: Instance, targetScale: number?, duration: number?): Animation
+function Animator.scaleDown(instance: GuiObject, targetScale: number?, duration: number?): Animation
 	local scale = targetScale or 0.9
-	local originalSize = instance.Size
-	
 	return Animator.animate(instance, {
-		Size = UDim2.new(
-			originalSize.X.Scale * scale,
-			originalSize.X.Offset * scale,
-			originalSize.Y.Scale * scale,
-			originalSize.Y.Offset * scale
-		)
+		Size = scaleUDim2(instance.Size, scale),
 	}, {
 		duration = duration or 0.2,
 		style = Enum.EasingStyle.Quad,
@@ -163,90 +198,90 @@ function Animator.scaleDown(instance: Instance, targetScale: number?, duration: 
 	})
 end
 
--- Slide in (desde arriba, abajo, izquierda, derecha)
+-- Slide in: mueve `instance` a una posición offset (off-screen) y la anima hasta su pos actual.
 function Animator.slideIn(
-	instance: Instance, 
+	instance: GuiObject,
 	direction: "top" | "bottom" | "left" | "right",
 	distance: number?,
 	duration: number?
 ): Animation
 	local dist = distance or 100
-	local currentPos = instance.Position
-	
-	local targetPos = currentPos
+	local finalPos = instance.Position
+	local offsetX, offsetY = 0, 0
+
 	if direction == "top" then
-		instance.Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, currentPos.Y.Scale, currentPos.Y.Offset - dist)
+		offsetY = -dist
 	elseif direction == "bottom" then
-		instance.Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, currentPos.Y.Scale, currentPos.Y.Offset + dist)
+		offsetY = dist
 	elseif direction == "left" then
-		instance.Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset - dist, currentPos.Y.Scale, currentPos.Y.Offset)
+		offsetX = -dist
 	elseif direction == "right" then
-		instance.Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset + dist, currentPos.Y.Scale, currentPos.Y.Offset)
+		offsetX = dist
 	end
-	
-	return Animator.animate(instance, {
-		Position = targetPos
-	}, {
+
+	instance.Position = UDim2.new(
+		finalPos.X.Scale,
+		finalPos.X.Offset + offsetX,
+		finalPos.Y.Scale,
+		finalPos.Y.Offset + offsetY
+	)
+
+	return Animator.animate(instance, { Position = finalPos }, {
 		duration = duration or 0.4,
 		style = Enum.EasingStyle.Back,
 		direction = Enum.EasingDirection.Out,
 	})
 end
 
--- Shake (efecto de vibración)
-function Animator.shake(instance: Instance, intensity: number?, duration: number?): Animation
+-- Shake: usa UIScale aplicado al GuiObject. Sobrevive a layouts que sobrescriben Position.
+-- Requiere que el instance pueda contener un UIScale (cualquier GuiObject).
+function Animator.shake(instance: GuiObject, intensity: number?, duration: number?): Animation
 	local int = intensity or 5
 	local dur = duration or 0.5
-	local originalPos = instance.Position
-	
-	-- Crear secuencia de shakes
-	task.spawn(function()
-		local startTime = tick()
-		while tick() - startTime < dur do
-			local offsetX = math.random(-int, int)
-			local offsetY = math.random(-int, int)
-			
-			instance.Position = UDim2.new(
-				originalPos.X.Scale,
-				originalPos.X.Offset + offsetX,
-				originalPos.Y.Scale,
-				originalPos.Y.Offset + offsetY
-			)
-			
-			task.wait(0.05)
-		end
-		
-		-- Volver a posición original
-		instance.Position = originalPos
-	end)
-	
-	-- Retornar animación dummy (para API consistente)
-	return {
-		tween = nil,
-		play = function() end,
-		pause = function() end,
-		cancel = function() end,
-		onComplete = function(_, callback) 
-			task.delay(dur, callback)
-			return _
+	local completeCallbacks: { () -> () } = {}
+	local cancelled = false
+
+	local function play()
+		-- Aplicamos translaciones via un UIScale hijo no es válido (UIScale no traslada);
+		-- usamos AnchorPoint-based: añadimos un offset temporal restaurando al final.
+		local originalPos = instance.Position
+		task.spawn(function()
+			local startTime = os.clock()
+			while not cancelled and (os.clock() - startTime) < dur do
+				local offsetX = math.random(-int, int)
+				local offsetY = math.random(-int, int)
+				instance.Position = UDim2.new(
+					originalPos.X.Scale,
+					originalPos.X.Offset + offsetX,
+					originalPos.Y.Scale,
+					originalPos.Y.Offset + offsetY
+				)
+				task.wait(0.04)
+			end
+			instance.Position = originalPos
+			for _, cb in ipairs(completeCallbacks) do
+				task.spawn(cb)
+			end
+		end)
+	end
+
+	return makeCustomAnimation({
+		play = play,
+		cancel = function()
+			cancelled = true
 		end,
-	}
+		onComplete = function(callback)
+			table.insert(completeCallbacks, callback)
+		end,
+	})
 end
 
--- Pulse (efecto de pulso)
-function Animator.pulse(instance: Instance, scale: number?, duration: number?): Animation
+function Animator.pulse(instance: GuiObject, scale: number?, duration: number?): Animation
 	local targetScale = scale or 1.1
-	local dur = duration or 0.3
-	
 	return Animator.animate(instance, {
-		Size = UDim2.new(
-			instance.Size.X.Scale * targetScale,
-			instance.Size.X.Offset,
-			instance.Size.Y.Scale * targetScale,
-			instance.Size.Y.Offset
-		)
+		Size = scaleUDim2(instance.Size, targetScale),
 	}, {
-		duration = dur,
+		duration = duration or 0.3,
 		style = Enum.EasingStyle.Quad,
 		direction = Enum.EasingDirection.InOut,
 		repeatCount = 1,
@@ -255,52 +290,62 @@ function Animator.pulse(instance: Instance, scale: number?, duration: number?): 
 end
 
 -- ============================================================================
--- ANIMACIONES ENCADENADAS (SEQUENCE)
+-- COMPOSITION
 -- ============================================================================
 
--- Ejecutar animaciones en secuencia
-function Animator.sequence(animations: {Animation}): Animation
-	local currentIndex = 1
-	
-	local function playNext()
-		if currentIndex <= #animations then
-			local anim = animations[currentIndex]
-			currentIndex = currentIndex + 1
-			
-			anim:onComplete(function()
-				playNext()
-			end)
-			
-			anim:play()
+function Animator.sequence(animations: { Animation }): Animation
+	local cancelled = false
+
+	local function playFrom(index: number, onAllDone: () -> ())
+		if cancelled or index > #animations then
+			onAllDone()
+			return
 		end
+		local anim = animations[index]
+		anim:onComplete(function()
+			playFrom(index + 1, onAllDone)
+		end)
+		anim:play()
 	end
-	
-	return {
-		tween = nil,
+
+	local completeCallbacks: { () -> () } = {}
+
+	return makeCustomAnimation({
 		play = function()
-			playNext()
+			playFrom(1, function()
+				for _, cb in ipairs(completeCallbacks) do
+					task.spawn(cb)
+				end
+			end)
 		end,
-		pause = function() end,
 		cancel = function()
+			cancelled = true
 			for _, anim in ipairs(animations) do
 				anim:cancel()
 			end
 		end,
-		onComplete = function(_, callback)
-			if #animations > 0 then
-				animations[#animations]:onComplete(callback)
-			end
-			return _
+		onComplete = function(callback)
+			table.insert(completeCallbacks, callback)
 		end,
-	}
+	})
 end
 
--- Ejecutar animaciones en paralelo
-function Animator.parallel(animations: {Animation}): Animation
-	return {
-		tween = nil,
+function Animator.parallel(animations: { Animation }): Animation
+	local completeCallbacks: { () -> () } = {}
+
+	return makeCustomAnimation({
 		play = function()
+			local completed = 0
+			local total = #animations
 			for _, anim in ipairs(animations) do
+				anim:onComplete(function()
+					completed += 1
+					if completed == total then
+						for _, cb in ipairs(completeCallbacks) do
+							task.spawn(cb)
+						end
+					end
+				end)
 				anim:play()
 			end
 		end,
@@ -314,20 +359,10 @@ function Animator.parallel(animations: {Animation}): Animation
 				anim:cancel()
 			end
 		end,
-		onComplete = function(_, callback)
-			-- Esperar a que todas terminen
-			local completed = 0
-			for _, anim in ipairs(animations) do
-				anim:onComplete(function()
-					completed = completed + 1
-					if completed == #animations then
-						callback()
-					end
-				end)
-			end
-			return _
+		onComplete = function(callback)
+			table.insert(completeCallbacks, callback)
 		end,
-	}
+	})
 end
 
 return Animator

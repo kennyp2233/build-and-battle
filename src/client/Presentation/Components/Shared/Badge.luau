@@ -1,22 +1,33 @@
 -- Badge.luau
--- Componente reutilizable de badge/etiqueta
+-- Etiqueta visual con borde y texto. Size override-able vía prop.
 
 local RoUI = require(script.Parent.Parent.Parent.Core.RoUI)
 local Theme = require(script.Parent.Parent.Parent.Core.Theme)
 
-local function Badge(props: {text: string, bgColor: Color3?, textColor: Color3?})
+export type BadgeProps = {
+	text: string,
+	bgColor: Color3?,
+	textColor: Color3?,
+	size: UDim2?,
+	layoutOrder: number?,
+	name: string?,
+}
+
+local function Badge(props: BadgeProps): TextLabel
 	return RoUI.TextLabel({
+		Name = props.name or "Badge",
 		Text = props.text,
-		Size = UDim2.new(0.38, 0, 1, 0),
+		Size = props.size or UDim2.new(0.38, 0, 1, 0),
+		LayoutOrder = props.layoutOrder or 0,
 		BackgroundColor3 = props.bgColor or Theme.ProgressBG,
 		TextColor3 = props.textColor or Theme.TextMain,
 		Font = Theme.Font,
-		TextSize = 18,
+		TextSize = Theme.TextSize.md,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		children = {
-			RoUI.corner(10),
-			RoUI.stroke(1, Theme.CardStroke, 0.4),
-		}
+			RoUI.corner(Theme.Radius.md),
+			RoUI.stroke(Theme.Stroke.thin, Theme.CardStroke, 0.4),
+		},
 	})
 end
 

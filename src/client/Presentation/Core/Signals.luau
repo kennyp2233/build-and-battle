@@ -1,5 +1,6 @@
 -- Signals.luau
--- Sistema de reactividad basado en signals para RoUI
+-- Observable values con suscripciones. Mantén `_value` y `_listeners` como privados
+-- (con underscore) — no los toques desde afuera o se rompe la reactividad.
 
 local Signals = {}
 
@@ -8,44 +9,47 @@ local Signals = {}
 -- ============================================================================
 
 export type Signal<T> = {
-	value: T,
-	listeners: {(T) -> ()},
-	set: (self: Signal<T>, newValue: T) -> (),
 	get: (self: Signal<T>) -> T,
+	set: (self: Signal<T>, newValue: T) -> (),
 	subscribe: (self: Signal<T>, callback: (T) -> ()) -> () -> (),
+	_value: T,
+	_listeners: { (T) -> () },
 }
 
 -- ============================================================================
--- SIGNAL CREATION
+-- CREATION
 -- ============================================================================
 
 function Signals.create<T>(initialValue: T): Signal<T>
 	local signal = {
-		value = initialValue,
-		listeners = {},
+		_value = initialValue,
+		_listeners = {},
 	}
 
+	function signal:get(): T
+		return self._value
+	end
+
 	function signal:set(newValue: T)
-		if self.value ~= newValue then
-			self.value = newValue
-			-- Notificar a todos los listeners
-			for _, listener in ipairs(self.listeners) do
-				task.spawn(listener, newValue)
-			end
+		if self._value == newValue then
+			return
+		end
+		self._value = newValue
+
+		-- Copia defensiva: un listener puede agregar/quitar otros durante la notificación
+		-- sin corromper el iterador.
+		local snapshot = table.clone(self._listeners)
+		for _, listener in ipairs(snapshot) do
+			task.spawn(listener, newValue)
 		end
 	end
 
-	function signal:get(): T
-		return self.value
-	end
-
 	function signal:subscribe(callback: (T) -> ()): () -> ()
-		table.insert(self.listeners, callback)
-		-- Retornar función de cleanup
+		table.insert(self._listeners, callback)
 		return function()
-			local index = table.find(self.listeners, callback)
+			local index = table.find(self._listeners, callback)
 			if index then
-				table.remove(self.listeners, index)
+				table.remove(self._listeners, index)
 			end
 		end
 	end
@@ -54,75 +58,35 @@ function Signals.create<T>(initialValue: T): Signal<T>
 end
 
 -- ============================================================================
--- DERIVED SIGNALS (Computed)
+-- COMPUTED (derived signals)
 -- ============================================================================
 
--- Crear un signal derivado que se actualiza automáticamente
-function Signals.computed<T>(dependencies: {Signal<any>}, compute: () -> T): Signal<T>
-	local derivedSignal = Signals.create(compute())
-	
-	for _, dependency in ipairs(dependencies) do
-		dependency:subscribe(function()
-			derivedSignal:set(compute())
-		end)
-	end
-	
-	return derivedSignal
-end
-
--- ============================================================================
--- REACTIVE COMPONENT
--- ============================================================================
-
-type ReactiveComponent = {
-	instance: Instance,
-	cleanup: () -> (),
-	update: (self: ReactiveComponent, props: any) -> (),
-	destroy: (self: ReactiveComponent) -> (),
+export type ComputedSignal<T> = Signal<T> & {
+	destroy: (self: ComputedSignal<T>) -> (),
 }
 
--- Crear componente reactivo que se actualiza cuando cambian signals
-function Signals.reactive(
-	builder: (props: any) -> Instance,
-	signals: {Signal<any>}
-): (props: any) -> ReactiveComponent
-	return function(props: any): ReactiveComponent
-		local instance = builder(props)
-		local unsubscribers = {}
+-- Crea un signal derivado que recomputa cuando cualquier dependencia cambia.
+-- Devuelve un signal extendido con :destroy() — llamarlo cuando dejes de usarlo
+-- para no filtrar suscripciones a las dependencias.
+function Signals.computed<T>(dependencies: { Signal<any> }, compute: () -> T): ComputedSignal<T>
+	local derived = Signals.create(compute())
+	local unsubscribers: { () -> () } = {}
 
-		-- Suscribirse a todos los signals
-		for _, signal in ipairs(signals) do
-			local unsubscribe = signal:subscribe(function()
-				-- Re-aplicar props cuando el signal cambie
-				-- Nota: Necesita acceso a updateProps de RoUI
-				-- Se manejará en la integración
-			end)
-			table.insert(unsubscribers, unsubscribe)
-		end
-
-		local component = {
-			instance = instance,
-		}
-
-		function component:update(newProps: any)
-			-- Se implementará con RoUI.updateProps
-		end
-
-		function component:cleanup()
-			for _, unsub in ipairs(unsubscribers) do
-				unsub()
-			end
-		end
-
-		function component:destroy()
-			self:cleanup()
-			if self.instance then
-				self.instance:Destroy()
-			end
-		end
-
-		return component
+	for _, dependency in ipairs(dependencies) do
+		table.insert(unsubscribers, dependency:subscribe(function()
+			derived:set(compute())
+		end))
 	end
+
+	function derived:destroy()
+		for _, unsub in ipairs(unsubscribers) do
+			unsub()
+		end
+		unsubscribers = {}
+		self._listeners = {}
+	end
+
+	return derived
 end
 
 return Signals
