@@ -1,10 +1,10 @@
--- StateDisplay.luau
+-- GameStateDisplay.luau
 -- Componente para mostrar el estado actual del juego
 
-local RoUI = require(script.Parent.Parent.Parent.Core.RoUI)
-local Theme = require(script.Parent.Parent.Parent.Core.Theme)
+local RoUI = require(script.Parent.Parent.Parent.Parent.Core.RoUI)
+local Theme = require(script.Parent.Parent.Parent.Parent.Core.Theme)
 
-local function StateDisplay(props: {state: string})
+local function GameStateDisplay(props: {state: string})
 	return RoUI.TextLabel({
 		Name = "StateDisplay",
 		Text = props.state:upper(),
@@ -18,4 +18,4 @@ local function StateDisplay(props: {state: string})
 	})
 end
 
-return StateDisplay
+return GameStateDisplay

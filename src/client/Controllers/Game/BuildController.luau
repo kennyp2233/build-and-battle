@@ -1,5 +1,6 @@
--- BuildController.luau (Controlador para manejar la construcción en el cliente)
--- Maneja inputs del jugador y actualiza bloques colocados con configuración centralizada
+-- BuildController.luau (Cliente)
+-- Input + preview de construcción. Pide al servidor con PlaceBlockRequest
+-- y reacciona al broadcast BlockPlaced para efectos locales.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -9,15 +10,18 @@ local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
+local Events = require(ReplicatedStorage.Shared.Network.Events)
+local Maid = require(ReplicatedStorage.Shared.Utils.Maid)
 local Logger = require(ReplicatedStorage.Shared.Utils.Logger)
 
 local player = Players.LocalPlayer
 local logger = Logger.new("BuildController")
 
+local PLACEMENT_COOLDOWN = 0.2
+
 local BuildController = {}
 BuildController.__index = BuildController
 
--- Helpers
 local function SnapToGrid(pos: Vector3, gridSize: number, origin: Vector3?)
 	origin = origin or Vector3.new(0, 0, 0)
 	return Vector3.new(
@@ -27,31 +31,26 @@ local function SnapToGrid(pos: Vector3, gridSize: number, origin: Vector3?)
 	)
 end
 
-function BuildController.new()
+function BuildController.new(network)
+	assert(network, "BuildController requires a ClientNetwork instance")
 	local self = setmetatable({}, BuildController)
 
-	-- Esperar el evento con timeout de 10 segundos
-	self.placeBlockEvent = ReplicatedStorage:WaitForChild(GameConfig.EVENTS.PLACE_BLOCK, 10)
-	if not self.placeBlockEvent then
-		logger:Error("Failed to find PlaceBlock event after 10 seconds")
-		return self
-	end
+	self.network = network
+	self.maid = Maid.new()
 
 	self.previewBlock = nil
 	self.previewConnection = nil
 	self.isEquipped = false
 	self.currentTool = nil
-	self.targetPosition = nil -- Para interpolación suave
-	self.isValidPlacement = false -- Para validación visual
-	self.lastPlacementTime = 0 -- Para cooldown
+	self.targetPosition = nil
+	self.isValidPlacement = false
+	self.lastPlacementTime = 0
 	self._firstPreviewPositioned = false
 
-	-- Escuchar cuando se coloca un bloque
-	self.placeBlockEvent.OnClientEvent:Connect(function(id, position, blockType, owner)
+	self.maid:Give(self.network:On(Events.BlockPlaced, function(id, position, blockType, owner)
 		self:OnBlockPlaced(id, position, blockType, owner)
-	end)
+	end))
 
-	-- Configurar herramienta de construcción
 	self:SetupTool()
 
 	logger:Info("BuildController initialized")
@@ -62,80 +61,51 @@ function BuildController:SetupTool()
 	local backpack = player:WaitForChild("Backpack")
 	local character = player.Character or player.CharacterAdded:Wait()
 
-	-- Conectar cuando se añade una nueva herramienta al backpack
-	backpack.ChildAdded:Connect(function(child)
+	self.maid:Give(backpack.ChildAdded:Connect(function(child)
 		if child.Name == "BuildTool" and child:IsA("Tool") then
-			logger:Info("BuildTool detected in backpack (ChildAdded)")
 			self:ConnectTool(child)
 		end
-	end)
+	end))
 
-	-- Conectar cuando se añade una herramienta al character (equipada)
-	character.ChildAdded:Connect(function(child)
+	self.maid:Give(character.ChildAdded:Connect(function(child)
 		if child.Name == "BuildTool" and child:IsA("Tool") then
-			logger:Info("BuildTool detected in character (ChildAdded)")
 			self:ConnectTool(child)
 		end
-	end)
+	end))
 
-	-- Verificar si ya tiene la herramienta en el backpack
 	for _, child in ipairs(backpack:GetChildren()) do
 		if child.Name == "BuildTool" and child:IsA("Tool") then
-			logger:Info("BuildTool found in backpack (initial check)")
 			self:ConnectTool(child)
 		end
 	end
-
-	-- Verificar si ya tiene la herramienta equipada en el character
 	for _, child in ipairs(character:GetChildren()) do
 		if child.Name == "BuildTool" and child:IsA("Tool") then
-			logger:Info("BuildTool found in character (initial check)")
 			self:ConnectTool(child)
 		end
 	end
-
-	logger:Debug("SetupTool completed")
 end
 
 function BuildController:ConnectTool(tool)
-	-- Evitar conexiones duplicadas
 	if tool:GetAttribute("Connected") then
-		logger:Debug("Tool already connected, skipping")
 		return
 	end
 	tool:SetAttribute("Connected", true)
-
 	self.currentTool = tool
-	logger:Info("Connecting BuildTool events...")
 
-	-- Verificar que la herramienta tenga Handle
-	local handle = tool:FindFirstChild("Handle")
-	if not handle then
-		logger:Error("BuildTool has no Handle! Tool events may not work.")
-	else
-		logger:Debug("BuildTool has Handle: %s", handle.Name)
-	end
-
-	tool.Equipped:Connect(function()
-		logger:Info("✅ BuildTool EQUIPPED - Preview should appear now")
+	self.maid:Give(tool.Equipped:Connect(function()
 		self.isEquipped = true
 		self._firstPreviewPositioned = false
 		self:ShowPreview()
-	end)
+	end))
 
-	tool.Unequipped:Connect(function()
-		logger:Info("❌ BuildTool UNEQUIPPED - Preview should hide now")
+	self.maid:Give(tool.Unequipped:Connect(function()
 		self.isEquipped = false
 		self:HidePreview()
-	end)
+	end))
 
-	tool.Activated:Connect(function()
-		logger:Info("🔨 BuildTool ACTIVATED - Attempting to place block")
-
-		-- Verificar cooldown (evitar spam)
+	self.maid:Give(tool.Activated:Connect(function()
 		local currentTime = tick()
-		if currentTime - self.lastPlacementTime < 0.2 then
-			logger:Debug("Cooldown active, ignoring click")
+		if currentTime - self.lastPlacementTime < PLACEMENT_COOLDOWN then
 			return
 		end
 
@@ -143,31 +113,20 @@ function BuildController:ConnectTool(tool)
 			local position = self.targetPosition or self.previewBlock.Position
 			self:RequestPlaceBlock(position, "Wood")
 			self.lastPlacementTime = currentTime
-
-			-- Efecto visual de colocación
 			self:PlayPlacementEffect(position)
-		else
-			if not self.isValidPlacement then
-				logger:Warn("Cannot place block - invalid placement location")
-				self:PlayInvalidPlacementEffect()
-			else
-				logger:Warn("Cannot place block - preview not visible")
-			end
+		elseif not self.isValidPlacement then
+			self:PlayInvalidPlacementEffect()
 		end
-	end)
-
-	logger:Info("✅ BuildTool events connected successfully")
+	end))
 end
 
 function BuildController:RequestPlaceBlock(position: Vector3, blockType: string)
-	self.placeBlockEvent:FireServer(position, blockType)
-	logger:Debug("Requested to place %s block at %s", blockType, tostring(position))
+	self.network:Fire(Events.PlaceBlockRequest, position, blockType)
 end
 
 function BuildController:OnBlockPlaced(id, position, blockType, owner)
-	-- El bloque ya se crea en el servidor, pero aquí podrías agregar efectos locales
-	logger:Info("Block placed: %s by %s at %s", id, owner, tostring(position))
-	-- Aquí se podrían agregar efectos de partículas, sonidos, etc.
+	logger:Debug("Block placed broadcast: %s by %s", id, owner)
+	-- Hook futuro: efectos locales (particulas, sonido)
 end
 
 function BuildController:ShowPreview()
@@ -186,26 +145,22 @@ function BuildController:ShowPreview()
 	self.previewBlock.CanCollide = false
 	self.previewBlock.Transparency = 0.6
 	self.previewBlock.Color = blockProps.Color
-	self.previewBlock.Material = Enum.Material.Neon -- Neon para efecto brillante
+	self.previewBlock.Material = Enum.Material.Neon
 	self.previewBlock.CastShadow = false
 	self.previewBlock.Name = "BuildPreview"
 	self.previewBlock.Parent = workspace
 
-	-- Agregar efecto de borde
 	local selectionBox = Instance.new("SelectionBox")
 	selectionBox.Name = "PreviewOutline"
 	selectionBox.Adornee = self.previewBlock
 	selectionBox.LineThickness = 0.05
-	selectionBox.Color3 = Color3.fromRGB(0, 255, 0) -- Verde por defecto
+	selectionBox.Color3 = Color3.fromRGB(0, 255, 0)
 	selectionBox.Transparency = 0.5
 	selectionBox.Parent = self.previewBlock
 
-	-- Actualizar posición continuamente con interpolación suave
 	self.previewConnection = RunService.RenderStepped:Connect(function(deltaTime)
 		self:UpdatePreview(deltaTime)
 	end)
-
-	logger:Debug("Preview block shown with smooth interpolation")
 end
 
 function BuildController:HidePreview()
@@ -217,7 +172,6 @@ function BuildController:HidePreview()
 		self.previewConnection:Disconnect()
 		self.previewConnection = nil
 	end
-	logger:Debug("Preview block hidden")
 end
 
 function BuildController:UpdatePreview(deltaTime)
@@ -225,7 +179,6 @@ function BuildController:UpdatePreview(deltaTime)
 		return
 	end
 
-	-- Raycast desde la cámara hacia donde apunta el mouse
 	local camera = workspace.CurrentCamera
 	local mouseLocation = UserInputService:GetMouseLocation()
 	local unitRay = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
@@ -240,11 +193,9 @@ function BuildController:UpdatePreview(deltaTime)
 		local gridSize = GameConfig.BUILD.BLOCK_SIZE
 		local origin = GameConfig.BUILD.GRID_ORIGIN or Vector3.new(0, 0, 0)
 
-		-- ✅ FIX OFFSET: desde la superficie, avanza medio bloque y luego haz snap
 		local rawTarget = raycastResult.Position + (raycastResult.Normal * (gridSize / 2))
 		self.targetPosition = SnapToGrid(rawTarget, gridSize, origin)
 
-		-- Interpolación suave (la primera vez coloca instantáneo)
 		local lerpSpeed = 15
 		if not self._firstPreviewPositioned then
 			self.previewBlock.Position = self.targetPosition
@@ -256,28 +207,24 @@ function BuildController:UpdatePreview(deltaTime)
 			)
 		end
 
-		-- Validación
 		self.isValidPlacement = self:CheckValidPlacement(self.targetPosition)
 
-		-- Feedback visual
 		local selectionBox = self.previewBlock:FindFirstChild("PreviewOutline")
 		if selectionBox then
 			if self.isValidPlacement then
-				selectionBox.Color3 = Color3.fromRGB(0, 255, 0) -- OK
+				selectionBox.Color3 = Color3.fromRGB(0, 255, 0)
 				self.previewBlock.Transparency = 0.5
 			else
-				selectionBox.Color3 = Color3.fromRGB(255, 0, 0) -- Inválido
+				selectionBox.Color3 = Color3.fromRGB(255, 0, 0)
 				self.previewBlock.Transparency = 0.7
 			end
 		end
 	else
-		-- No hay superficie válida donde colocar
 		self.previewBlock.Transparency = 1
 		self.isValidPlacement = false
 	end
 end
 
--- Verificar si la posición es válida para colocar (validación del lado del cliente)
 function BuildController:CheckValidPlacement(position: Vector3): boolean
 	if not position or not player.Character then
 		return false
@@ -289,16 +236,13 @@ function BuildController:CheckValidPlacement(position: Vector3): boolean
 		return false
 	end
 
-	-- 1) Distancia máxima
-	local maxDist = GameConfig.BUILD.MAX_PLACEMENT_DISTANCE
-	if (position - hrp.Position).Magnitude > maxDist then
+	if (position - hrp.Position).Magnitude > GameConfig.BUILD.MAX_PLACEMENT_DISTANCE then
 		return false
 	end
 
-	-- 2) Ocupación de la celda con bounds (robusto y simple)
 	local blockSize = GameConfig.BUILD.BLOCK_SIZE
 	local origin = GameConfig.BUILD.GRID_ORIGIN or Vector3.new(0, 0, 0)
-	local epsilon = 0.05 -- margen para evitar falsos positivos por imprecisión
+	local epsilon = 0.05
 	local checkSize = Vector3.new(blockSize - epsilon, blockSize - epsilon, blockSize - epsilon)
 
 	local overlapParams = OverlapParams.new()
@@ -308,12 +252,10 @@ function BuildController:CheckValidPlacement(position: Vector3): boolean
 	local touching = workspace:GetPartBoundsInBox(CFrame.new(position), checkSize, overlapParams)
 
 	for _, part in ipairs(touching) do
-		-- Si tus bloques tienen atributo "IsBlock", úsalo; si no, cae a CanCollide como heurística
 		if part:GetAttribute("IsBlock") or part.CanCollide then
-			-- Confirma misma celda (snap) para evitar colisiones por esquinas
 			local snappedPart = SnapToGrid(part.Position, blockSize, origin)
 			if snappedPart == position then
-				return false -- Ya hay un bloque en esta posición del grid
+				return false
 			end
 		end
 	end
@@ -321,7 +263,6 @@ function BuildController:CheckValidPlacement(position: Vector3): boolean
 	return true
 end
 
--- Efecto visual cuando se coloca un bloque exitosamente
 function BuildController:PlayPlacementEffect(position: Vector3)
 	local effect = Instance.new("Part")
 	effect.Size = Vector3.new(0.5, 0.5, 0.5)
@@ -345,28 +286,26 @@ function BuildController:PlayPlacementEffect(position: Vector3)
 	Debris:AddItem(effect, 0.5)
 end
 
--- Efecto visual cuando el placement es inválido
 function BuildController:PlayInvalidPlacementEffect()
 	if not self.previewBlock then
 		return
 	end
-
 	local originalTransparency = self.previewBlock.Transparency
-	self.previewBlock.Transparency = 0.9
 	task.spawn(function()
 		for _ = 1, 3 do
+			if not self.previewBlock then return end
 			self.previewBlock.Transparency = 0.9
 			task.wait(0.05)
+			if not self.previewBlock then return end
 			self.previewBlock.Transparency = originalTransparency
 			task.wait(0.05)
 		end
 	end)
 end
 
--- Cleanup
 function BuildController:Destroy()
-	logger:Info("Destroying BuildController")
 	self:HidePreview()
+	self.maid:Clean()
 end
 
 return BuildController

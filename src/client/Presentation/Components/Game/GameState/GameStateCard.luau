@@ -1,13 +1,13 @@
--- HUDCard.luau
+-- GameStateCard.luau
 -- Tarjeta del HUD que muestra el estado del juego, timer y progreso
 
-local RoUI = require(script.Parent.Parent.Parent.Core.RoUI)
-local Theme = require(script.Parent.Parent.Parent.Core.Theme)
-local StatusRow = require(script.Parent.StatusRow)
-local StateDisplay = require(script.Parent.StateDisplay)
-local ProgressBar = require(script.Parent.Parent.Shared.ProgressBar)
+local RoUI = require(script.Parent.Parent.Parent.Parent.Core.RoUI)
+local Theme = require(script.Parent.Parent.Parent.Parent.Core.Theme)
+local GameStatusRow = require(script.Parent.GameStatusRow)
+local GameStateDisplay = require(script.Parent.GameStateDisplay)
+local ProgressBar = require(script.Parent.Parent.Parent.Shared.ProgressBar)
 
-local function HUDCard(props: {
+local function GameStateCard(props: {
 	state: string,
 	timer: number,
 	maxTimer: number,
@@ -33,15 +33,15 @@ local function HUDCard(props: {
 		RoUI.corner(14),
 		RoUI.padding(16),
 		RoUI.listLayout(Enum.FillDirection.Vertical, 8),
-		StatusRow({
+		GameStatusRow({
 			state = props.state,
 			round = props.round,
 			timerText = timerText,
 			timerColor = timerColor,
 		}),
-		StateDisplay({ state = props.state }),
+		GameStateDisplay({ state = props.state }),
 		ProgressBar({ progress = progress, color = progressColor }),
 	}
 end
 
-return HUDCard
+return GameStateCard

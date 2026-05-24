@@ -1,52 +1,33 @@
--- init.server.luau (Punto de entrada principal del servidor)
--- Inicializa la arquitectura modular del juego con Clean Architecture
+-- init.server.luau (Entry point del servidor)
+-- Orden de boot: Network → Services → Controller → Init.
+-- ServerNetwork crea TODOS los RemoteEvents antes de que cualquier cliente intente conectarse.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Importar utilidades
-local NetworkManager = require(ReplicatedStorage.Shared.Utils.NetworkManager)
 local Logger = require(ReplicatedStorage.Shared.Utils.Logger)
 
--- Importar servicios compartidos
-local GameStateService = require(ReplicatedStorage.Shared.Services.GameStateService)
-local BuildService = require(ReplicatedStorage.Shared.Services.BuildService)
-
--- Importar controlador del servidor
+local ServerNetwork = require(script.Network.ServerNetwork)
+local GameStateService = require(script.Services.GameStateService)
+local BuildService = require(script.Services.BuildService)
 local GameController = require(script.Controllers.GameController)
 
 local logger = Logger.new("Server")
 
--- Crear instancia compartida de NetworkManager
-local networkManager = NetworkManager.new()
+-- 1. Network: crea los RemoteEvents (necesario antes de que clientes hagan WaitForChild)
+local network = ServerNetwork.new()
 
--- IMPORTANTE: Crear todos los eventos ANTES de inicializar servicios y controladores
--- Esto evita "Infinite yield" en WaitForChild
-local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
-networkManager:GetOrCreateEvent(GameConfig.EVENTS.GAME_STATE_CHANGED)
-networkManager:GetOrCreateEvent(GameConfig.EVENTS.PLACE_BLOCK)
+-- 2. Services: lógica con autoridad
+local gameStateService = GameStateService.new(network)
+local buildService = BuildService.new(network)
 
-logger:Info("Network events pre-created")
-
--- Inicializar servicios con dependencias inyectadas
-local gameStateService = GameStateService.new(networkManager)
-local buildService = BuildService.new(networkManager)
-
-logger:Info("Services initialized")
-
--- Inicializar controlador con inyección de dependencias
-local gameController = GameController.new(gameStateService, buildService)
-
--- Iniciar el juego (el GameController maneja PlayerAdded internamente)
+-- 3. Controller: orquesta servicios + use cases + jugadores
+local gameController = GameController.new(gameStateService, buildService, network)
 gameController:Init()
 
-logger:Info("Server initialized with Clean Architecture")
-print("==============================================")
-print("  Build & Battle Server - Ready")
-print("  Architecture: Clean Architecture Modular")
-print("==============================================")
+logger:Info("Server ready")
 
--- Cleanup cuando el servidor se cierra (opcional, para testing)
 game:BindToClose(function()
-	logger:Info("Server shutting down...")
+	logger:Info("Server shutting down")
 	gameController:Destroy()
+	network:Destroy()
 end)

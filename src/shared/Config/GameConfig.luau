@@ -1,5 +1,6 @@
--- GameConfig.luau (Configuración centralizada del juego)
--- Contiene todas las constantes y configuraciones del juego
+-- GameConfig.luau (Configuración compartida server+cliente)
+-- Solo constantes de gameplay. Los nombres de RemoteEvents viven en shared/Network/Events
+-- y la configuración visual del HUD vive en client/Presentation.
 
 local GameConfig = {
 	-- Tiempos de las fases del juego (en segundos)
@@ -11,10 +12,11 @@ local GameConfig = {
 
 	-- Configuración de construcción
 	BUILD = {
-		MAX_PLACEMENT_DISTANCE = 20, -- Distancia máxima para colocar bloques
-		BLOCK_SIZE = 4, -- Tamaño de cada bloque
-		MIN_BLOCK_SEPARATION = 4, -- Separación mínima entre bloques
-		GRID_SNAP_SIZE = 4, -- Tamaño del grid para snap
+		MAX_PLACEMENT_DISTANCE = 20,
+		BLOCK_SIZE = 4,
+		MIN_BLOCK_SEPARATION = 4,
+		GRID_SNAP_SIZE = 4,
+		GRID_ORIGIN = Vector3.new(0, 0, 0),
 	},
 
 	-- Tipos de bloques y sus propiedades
@@ -36,32 +38,17 @@ local GameConfig = {
 		},
 	},
 
-	-- Configuración de UI
-	UI = {
-		HUD_SIZE = UDim2.new(0, 400, 0, 100),
-		HUD_POSITION = UDim2.new(0.5, -200, 0.1, 0),
-		UPDATE_INTERVAL = 0.1, -- Intervalo de actualización de UI en segundos
-	},
-
-	-- Nombres de eventos de red
-	EVENTS = {
-		GAME_STATE_CHANGED = "GameStateChanged",
-		PLACE_BLOCK = "PlaceBlock",
-	},
-
-	-- Configuración de debug
+	-- Debug
 	DEBUG = {
 		ENABLED = true,
 		VERBOSE_LOGGING = false,
 	},
 }
 
--- Función helper para validar tipos de bloques
 function GameConfig.IsValidBlockType(blockType: string): boolean
 	return GameConfig.BLOCK_TYPES[blockType] ~= nil
 end
 
--- Función helper para obtener propiedades de bloque
 function GameConfig.GetBlockProperties(blockType: string)
 	return GameConfig.BLOCK_TYPES[blockType]
 end

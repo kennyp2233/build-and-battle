@@ -1,12 +1,12 @@
--- StatusRow.luau
+-- GameStatusRow.luau
 -- Componente que muestra el estado, round y timer en una fila
 
-local RoUI = require(script.Parent.Parent.Parent.Core.RoUI)
-local Theme = require(script.Parent.Parent.Parent.Core.Theme)
-local Badge = require(script.Parent.Parent.Shared.Badge)
-local Timer = require(script.Parent.Parent.Shared.Timer)
+local RoUI = require(script.Parent.Parent.Parent.Parent.Core.RoUI)
+local Theme = require(script.Parent.Parent.Parent.Parent.Core.Theme)
+local Badge = require(script.Parent.Parent.Parent.Shared.Badge)
+local Timer = require(script.Parent.Parent.Parent.Shared.Timer)
 
-local function StatusRow(props: {
+local function GameStatusRow(props: {
 	state: string,
 	round: number?,
 	timerText: string,
@@ -35,4 +35,4 @@ local function StatusRow(props: {
 	})
 end
 
-return StatusRow
+return GameStatusRow
