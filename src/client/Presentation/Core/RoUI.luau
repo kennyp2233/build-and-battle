@@ -154,6 +154,7 @@ RoUI.stroke = UIModifiers.stroke
 RoUI.gradient = UIModifiers.gradient
 RoUI.gradientMulti = UIModifiers.gradientMulti
 RoUI.shadow = UIModifiers.shadow
+RoUI.glow = UIModifiers.glow
 RoUI.listLayout = UIModifiers.listLayout
 RoUI.gridLayout = UIModifiers.gridLayout
 RoUI.tableLayout = UIModifiers.tableLayout
@@ -194,8 +195,11 @@ RoUI.scaleDown = Animator.scaleDown
 RoUI.slideIn = Animator.slideIn
 RoUI.shake = Animator.shake
 RoUI.pulse = Animator.pulse
+RoUI.colorTo = Animator.colorTo
+RoUI.numberTo = Animator.numberTo
 RoUI.sequence = Animator.sequence
 RoUI.parallel = Animator.parallel
+RoUI.easings = Animator.easings
 
 -- ============================================================================
 -- MOUNT

@@ -277,6 +277,7 @@ function Animator.shake(instance: GuiObject, intensity: number?, duration: numbe
 	})
 end
 
+-- Pulse: un beat (scale up + scale back). reverses=true sin repeat = 1 ciclo completo.
 function Animator.pulse(instance: GuiObject, scale: number?, duration: number?): Animation
 	local targetScale = scale or 1.1
 	return Animator.animate(instance, {
@@ -285,10 +286,128 @@ function Animator.pulse(instance: GuiObject, scale: number?, duration: number?):
 		duration = duration or 0.3,
 		style = Enum.EasingStyle.Quad,
 		direction = Enum.EasingDirection.InOut,
-		repeatCount = 1,
+		repeatCount = 0,
 		reverses = true,
 	})
 end
+
+-- Animación de color: transiciona suavemente cualquier prop de color (BackgroundColor3,
+-- TextColor3, ImageColor3, Color, etc).
+function Animator.colorTo(
+	instance: Instance,
+	property: string,
+	targetColor: Color3,
+	duration: number?
+): Animation
+	return Animator.animate(instance, { [property] = targetColor }, {
+		duration = duration or 0.3,
+		style = Enum.EasingStyle.Quad,
+		direction = Enum.EasingDirection.Out,
+	})
+end
+
+-- Count-up para números (TweenService no puede tweenear .Text directamente).
+-- formatter por defecto: math.floor + tostring. Pasa uno custom para "%d/100", "$%d", etc.
+function Animator.numberTo(
+	label: TextLabel | TextButton,
+	from: number,
+	to: number,
+	duration: number?,
+	formatter: ((number) -> string)?
+): Animation
+	local format: (number) -> string = formatter or function(v: number): string
+		return tostring(math.floor(v))
+	end
+	local dur = duration or 0.5
+	local cancelled = false
+	local completeCallbacks: { () -> () } = {}
+
+	local function play()
+		task.spawn(function()
+			local startTime = os.clock()
+			while not cancelled do
+				local elapsed = os.clock() - startTime
+				local t = math.min(elapsed / dur, 1)
+				-- ease-out cubic para que termine suave
+				local eased = 1 - (1 - t) ^ 3
+				local value = from + (to - from) * eased
+				label.Text = format(value)
+				if t >= 1 then
+					break
+				end
+				task.wait()
+			end
+			if not cancelled then
+				label.Text = format(to)
+			end
+			for _, cb in ipairs(completeCallbacks) do
+				task.spawn(cb)
+			end
+		end)
+	end
+
+	return makeCustomAnimation({
+		play = play,
+		cancel = function()
+			cancelled = true
+		end,
+		onComplete = function(callback)
+			table.insert(completeCallbacks, callback)
+		end,
+	})
+end
+
+-- ============================================================================
+-- EASING PRESETS
+-- ============================================================================
+
+-- Curvas nombradas por intención, no por nombre técnico. Cada una retorna un
+-- AnimationConfig que puedes pasar directo a Animator.animate.
+--
+--   RoUI.animate(thing, props, RoUI.easings.snappy())
+--   RoUI.animate(thing, props, RoUI.easings.smooth(0.5))
+Animator.easings = {
+	-- Movimiento suave de UI general (modals abriendo, paneles)
+	smooth = function(duration: number?): AnimationConfig
+		return {
+			duration = duration or 0.3,
+			style = Enum.EasingStyle.Quad,
+			direction = Enum.EasingDirection.InOut,
+		}
+	end,
+	-- Reacciones rápidas (hover, click feedback)
+	snappy = function(duration: number?): AnimationConfig
+		return {
+			duration = duration or 0.18,
+			style = Enum.EasingStyle.Quart,
+			direction = Enum.EasingDirection.Out,
+		}
+	end,
+	-- Entradas con overshoot (notificaciones, popups)
+	bouncy = function(duration: number?): AnimationConfig
+		return {
+			duration = duration or 0.5,
+			style = Enum.EasingStyle.Back,
+			direction = Enum.EasingDirection.Out,
+		}
+	end,
+	-- Transiciones largas y cinematográficas
+	elegant = function(duration: number?): AnimationConfig
+		return {
+			duration = duration or 0.6,
+			style = Enum.EasingStyle.Sine,
+			direction = Enum.EasingDirection.InOut,
+		}
+	end,
+	-- Acción inmediata (errors, alerts)
+	sharp = function(duration: number?): AnimationConfig
+		return {
+			duration = duration or 0.15,
+			style = Enum.EasingStyle.Quint,
+			direction = Enum.EasingDirection.In,
+		}
+	end,
+}
 
 -- ============================================================================
 -- COMPOSITION

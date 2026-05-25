@@ -5,26 +5,30 @@
 --   S→C : server fires, clients listen
 --   C→S : client fires, server listens
 --
--- GameStateChanged (S→C)
+-- GameStateChanged (S→C, all)
 --   args: (state: string, endTimestamp: number, round: number)
 --
 -- PlaceBlockRequest (C→S)
 --   args: (position: Vector3, blockType: string)
 --
--- BlockPlaced (S→C)
+-- BlockPlaced (S→C, all)
 --   args: (id: string, position: Vector3, blockType: string, owner: string)
+--
+-- PlaceBlockRejected (S→C, requesting player only)
+--   args: (reason: string)
 
 local Events = {
 	GameStateChanged = "GameStateChanged",
 	PlaceBlockRequest = "PlaceBlockRequest",
 	BlockPlaced = "BlockPlaced",
+	PlaceBlockRejected = "PlaceBlockRejected",
 }
 
--- All defined event names as a list, used by Server/Client wrappers to register/wait.
 Events.All = {
 	Events.GameStateChanged,
 	Events.PlaceBlockRequest,
 	Events.BlockPlaced,
+	Events.PlaceBlockRejected,
 }
 
 return Events

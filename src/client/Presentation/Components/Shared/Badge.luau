@@ -27,6 +27,9 @@ local function Badge(props: BadgeProps): TextLabel
 		children = {
 			RoUI.corner(Theme.Radius.md),
 			RoUI.stroke(Theme.Stroke.thin, Theme.CardStroke, 0.4),
+			-- Padding horizontal generoso: imprescindible con AutomaticSize.X
+			-- para que el texto no toque los corners.
+			RoUI.paddingCustom(12, 12, 4, 4),
 		},
 	})
 end

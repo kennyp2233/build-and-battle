@@ -51,6 +51,11 @@ function BuildController.new(network)
 		self:OnBlockPlaced(id, position, blockType, owner)
 	end))
 
+	-- Server rechaza una colocación → feedback visual/audio para que el jugador sepa
+	self.maid:Give(self.network:On(Events.PlaceBlockRejected, function(reason)
+		self:OnPlacementRejected(reason)
+	end))
+
 	self:SetupTool()
 
 	logger:Info("BuildController initialized")
@@ -129,6 +134,12 @@ function BuildController:OnBlockPlaced(id, position, blockType, owner)
 	-- Hook futuro: efectos locales (particulas, sonido)
 end
 
+function BuildController:OnPlacementRejected(reason: string)
+	logger:Warn("Placement rejected by server: %s", reason)
+	-- Feedback visual al jugador: el preview parpadea rojo
+	self:PlayInvalidPlacementEffect()
+end
+
 function BuildController:ShowPreview()
 	if self.previewBlock then
 		return
@@ -181,7 +192,9 @@ function BuildController:UpdatePreview(deltaTime)
 
 	local camera = workspace.CurrentCamera
 	local mouseLocation = UserInputService:GetMouseLocation()
-	local unitRay = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
+	-- ScreenPointToRay (no ViewportPointToRay) porque GetMouseLocation incluye
+	-- el inset del topbar de Roblox; ScreenPoint usa el mismo sistema de coordenadas.
+	local unitRay = camera:ScreenPointToRay(mouseLocation.X, mouseLocation.Y)
 
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Exclude

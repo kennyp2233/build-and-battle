@@ -52,6 +52,7 @@ local Theme = {
 		md = 18,
 		lg = 22,
 		xl = 28,
+		huge = 52,
 	},
 
 	Stroke = {
@@ -59,6 +60,48 @@ local Theme = {
 		medium = 2,
 		thick = 3,
 	},
+
+	-- Paleta por fase del juego — usada para teñir el accent del HUD
+	-- (border glow, badge bg, banner subtitle) según la fase actual.
+	Phase = {
+		Intermission = {
+			accent = Color3.fromRGB(80, 140, 255),
+			accentGlow = Color3.fromRGB(120, 170, 255),
+			badgeBg = Color3.fromRGB(30, 50, 100),
+			badgeText = Color3.fromRGB(200, 220, 255),
+			icon = "⏳",
+			subtitle = "Get ready for the next round",
+		},
+		Building = {
+			accent = Color3.fromRGB(0, 220, 130),
+			accentGlow = Color3.fromRGB(60, 240, 160),
+			badgeBg = Color3.fromRGB(20, 70, 50),
+			badgeText = Color3.fromRGB(200, 250, 220),
+			icon = "🔨",
+			subtitle = "Place blocks to defend your base",
+		},
+		Battle = {
+			accent = Color3.fromRGB(255, 77, 91),
+			accentGlow = Color3.fromRGB(255, 120, 130),
+			badgeBg = Color3.fromRGB(80, 30, 35),
+			badgeText = Color3.fromRGB(255, 210, 210),
+			icon = "⚔️",
+			subtitle = "Eliminate your opponents",
+		},
+		Ended = {
+			accent = Color3.fromRGB(120, 126, 134),
+			accentGlow = Color3.fromRGB(160, 166, 174),
+			badgeBg = Color3.fromRGB(40, 42, 48),
+			badgeText = Color3.fromRGB(220, 222, 226),
+			icon = "🏁",
+			subtitle = "Round complete",
+		},
+	},
 }
+
+-- Devuelve la paleta de Phase para un state dado, con fallback a Intermission.
+function Theme.getPhase(state: string)
+	return Theme.Phase[state] or Theme.Phase.Intermission
+end
 
 return Theme

@@ -55,7 +55,10 @@ function GameController:SetupNetworkEvents()
 	self.maid:Give(self.network:OnRequest(Events.PlaceBlockRequest, function(player, position, blockType)
 		local result = self.placeBlock:Execute(position, blockType, player, self.currentGameState)
 		if Result.IsErr(result) then
-			logger:Warn("Place rejected for %s: %s", player.Name, Result.UnwrapErr(result))
+			local reason = Result.UnwrapErr(result)
+			logger:Warn("Place rejected for %s: %s", player.Name, reason)
+			-- Avisarle al cliente para que pueda dar feedback visual/sonoro
+			self.network:FireClient(Events.PlaceBlockRejected, player, reason)
 		end
 	end))
 end

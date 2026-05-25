@@ -1,20 +1,18 @@
 -- GameStateHUD.luau
--- HUD del estado del juego. Mantiene una sola GameStateCard y la mutates en vez de
--- destruirla y recrearla cada cambio de fase — preserva animaciones, hover, y el
--- estado del toggle de visibilidad.
-
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+-- Wrapper de posicionamiento del GameStateCard. Sin toggle (premium siempre visible).
+-- Si más adelante quieres ocultar el HUD, mejor con keybind/settings que con un botón pegado.
 
 local RoUI = require(script.Parent.Parent.Parent.Parent.Core.RoUI)
 local Theme = require(script.Parent.Parent.Parent.Parent.Core.Theme)
-local Maid = require(ReplicatedStorage.Shared.Utils.Maid)
 local GameStateCard = require(script.Parent.GameStateCard)
 
 local GameStateHUD = {}
 GameStateHUD.__index = GameStateHUD
 
-local VISIBLE_POSITION = UDim2.new(0.5, 0, 0.02, 0)
-local HIDDEN_POSITION = UDim2.new(0.5, 0, 0, -180)
+local POSITION = UDim2.new(0.5, 0, 0.02, 0)
+local CARD_WIDTH_SCALE = 0.42
+local CARD_MIN_WIDTH = 380
+local CARD_MAX_WIDTH = 560
 
 local DEFAULT_LOW_TIME_THRESHOLD = 10
 
@@ -27,16 +25,13 @@ function GameStateHUD.new(parent: Instance)
 		round = nil :: number?,
 		maxTimer = 30,
 		lowTimeThreshold = DEFAULT_LOW_TIME_THRESHOLD,
-		visible = true,
 	}
 
-	self.maid = Maid.new()
 	self:_createUI(parent)
 	return self
 end
 
 function GameStateHUD:_createUI(parent: Instance)
-	-- Card con refs (no se destruye en updates)
 	self.card = GameStateCard.new({
 		state = self.state.state,
 		timer = self.state.timer,
@@ -45,91 +40,38 @@ function GameStateHUD:_createUI(parent: Instance)
 		lowTimeThreshold = self.state.lowTimeThreshold,
 	})
 
-	-- Frame externo que posiciona la card
+	-- BackgroundColor3 = white para que el UIGradient defina los colores reales
+	-- (UIGradient MULTIPLICA el BackgroundColor3 — si no pones blanco, los colores
+	-- del gradient se aplastan contra el bg y el efecto de profundidad se pierde).
 	self.cardFrame = RoUI.Frame({
-		Name = "Card",
+		Name = "GameStateHUD",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Size = UDim2.new(0.5, 0, 0, 124),
-		Position = UDim2.new(0.5, 0, 0, 0),
-		BackgroundColor3 = Theme.Card,
+		Size = UDim2.new(CARD_WIDTH_SCALE, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Position = POSITION,
+		BackgroundColor3 = Color3.new(1, 1, 1),
 		BorderSizePixel = 0,
 		children = {
-			RoUI.sizeConstraint(Vector2.new(300, 0)),
+			RoUI.sizeConstraint(
+				Vector2.new(CARD_MIN_WIDTH, 0),
+				Vector2.new(CARD_MAX_WIDTH, math.huge)
+			),
+			RoUI.corner(Theme.Radius.lg),
+			-- Gradient vertical sutil que sí se ve (bg white permite que el gradient gane)
+			RoUI.gradientMulti({
+				{ offset = 0, color = Color3.fromRGB(28, 30, 36) },
+				{ offset = 0.5, color = Color3.fromRGB(20, 22, 26) },
+				{ offset = 1, color = Color3.fromRGB(14, 16, 20) },
+			}, 90),
 			self.card.root,
 		},
 	})
 
-	-- Toggle button
-	self.toggleButton = RoUI.TextButton({
-		Name = "ToggleButton",
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 124),
-		Size = UDim2.new(0, 40, 0, 40),
-		BackgroundColor3 = Theme.Card,
-		BorderSizePixel = 0,
-		Text = self.state.visible and "▲" or "▼",
-		TextColor3 = Color3.new(1, 1, 1),
-		TextSize = Theme.TextSize.lg,
-		Font = Enum.Font.GothamBold,
-		AutoButtonColor = false,
-		children = {
-			RoUI.stroke(Theme.Stroke.thin, Theme.CardStroke, 0.2),
-			RoUI.corner(Theme.Radius.md),
-		},
-	})
+	-- El card.root necesita auto-size también para que el cardFrame conozca su altura
+	self.card.root.AutomaticSize = Enum.AutomaticSize.Y
+	self.card.root.Size = UDim2.new(1, 0, 0, 0)
 
-	self.maid:Give(self.toggleButton.MouseEnter:Connect(function()
-		RoUI.animate(self.toggleButton, {
-			BackgroundColor3 = Theme.Primary,
-			Size = UDim2.new(0, 44, 0, 44),
-		}, {
-			duration = 0.2,
-		}):play()
-	end))
-
-	self.maid:Give(self.toggleButton.MouseLeave:Connect(function()
-		RoUI.animate(self.toggleButton, {
-			BackgroundColor3 = Theme.Card,
-			Size = UDim2.new(0, 40, 0, 40),
-		}, {
-			duration = 0.2,
-		}):play()
-	end))
-
-	self.maid:Give(self.toggleButton.Activated:Connect(function()
-		self:Toggle()
-	end))
-
-	self.container = RoUI.Frame({
-		Name = "GameStateHUD",
-		AnchorPoint = Vector2.new(0.5, 0),
-		Size = UDim2.new(0.5, 0, 0, 172),
-		Position = VISIBLE_POSITION,
-		BackgroundTransparency = 1,
-		children = {
-			self.cardFrame,
-			self.toggleButton,
-		},
-	})
-
-	self.container.Parent = parent
-end
-
--- ============================================================================
--- INTERACTION
--- ============================================================================
-
-function GameStateHUD:Toggle()
-	self.state.visible = not self.state.visible
-	local target = self.state.visible and VISIBLE_POSITION or HIDDEN_POSITION
-
-	RoUI.animate(self.container, { Position = target }, {
-		duration = 0.4,
-		style = Enum.EasingStyle.Back,
-		direction = Enum.EasingDirection.Out,
-	}):play()
-
-	self.toggleButton.Text = self.state.visible and "▲" or "▼"
+	self.cardFrame.Parent = parent
 end
 
 -- ============================================================================
@@ -142,7 +84,6 @@ function GameStateHUD:UpdateState(newState: string, timer: number, round: number
 	self.state.round = round
 	self.state.maxTimer = maxTimer or timer
 
-	-- Actualización parcial — no destruye el container ni el toggle state
 	self.card:UpdateState(newState, timer, round, self.state.maxTimer)
 end
 
@@ -155,16 +96,13 @@ function GameStateHUD:UpdateTimer(timer: number, maxTimer: number?)
 end
 
 function GameStateHUD:Destroy()
-	if self.maid then
-		self.maid:Clean()
-	end
 	if self.card then
 		self.card:Destroy()
 		self.card = nil
 	end
-	if self.container then
-		self.container:Destroy()
-		self.container = nil
+	if self.cardFrame then
+		self.cardFrame:Destroy()
+		self.cardFrame = nil
 	end
 end
 

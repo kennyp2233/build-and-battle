@@ -83,6 +83,17 @@ function UIModifiers.shadow(blur: number?, transparency: number?): UIStroke
 	return shadow
 end
 
+-- Glow: borde semi-transparente coloreado para dar sensación de luz/accent.
+-- Roblox no tiene shadow real 2D — un UIStroke grueso con transparencia simula el glow.
+function UIModifiers.glow(color: Color3, intensity: number?, transparency: number?): UIStroke
+	local glow = Instance.new("UIStroke")
+	glow.Color = color
+	glow.Thickness = intensity or 3
+	glow.Transparency = transparency or 0.35
+	glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	return glow
+end
+
 -- ============================================================================
 -- LAYOUT CONSTRAINTS
 -- ============================================================================
