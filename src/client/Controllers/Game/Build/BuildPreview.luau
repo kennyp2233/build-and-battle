@@ -1,17 +1,17 @@
 -- BuildPreview.luau
--- Visualización del bloque-ghost: raycast desde el mouse, snap a grid,
--- pinta verde/rojo según el predictor. Expone GetTargetPosition() y
--- IsValidPlacement() para que el caller (BuildController) las consulte
--- al activar el Tool.
+-- Preview tipo Minecraft. Usa Mouse API de Roblox (mouse.Target /
+-- mouse.TargetSurface / mouse.Hit) que es la implementación canónica para
+-- placement systems y tiene mejor desambiguación en bordes de bloques apilados
+-- que un raycast manual desde el cursor.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 
 local player = Players.LocalPlayer
+local mouse = player:GetMouse()
 
 local LERP_SPEED = 15
 
@@ -59,6 +59,11 @@ function BuildPreview:Show()
 	self.previewBlock = part
 	self._firstPositioned = false
 
+	-- Mouse.TargetFilter solo admite UNA instancia. El preview es lo más crítico
+	-- para excluir (autocollision); el character no estorba porque en TPS la
+	-- cámara está detrás del char, no entre la cámara y el cursor.
+	mouse.TargetFilter = part
+
 	self.connection = RunService.RenderStepped:Connect(function(dt)
 		self:_update(dt)
 	end)
@@ -70,6 +75,7 @@ function BuildPreview:Hide()
 		self.connection = nil
 	end
 	if self.previewBlock then
+		mouse.TargetFilter = nil
 		self.previewBlock:Destroy()
 		self.previewBlock = nil
 	end
@@ -83,28 +89,33 @@ function BuildPreview:_update(deltaTime: number)
 		return
 	end
 
-	local camera = workspace.CurrentCamera
-	local mouseLocation = UserInputService:GetMouseLocation()
-	-- ScreenPointToRay (no ViewportPointToRay) porque GetMouseLocation incluye
-	-- el inset del topbar de Roblox.
-	local unitRay = camera:ScreenPointToRay(mouseLocation.X, mouseLocation.Y)
-
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-	raycastParams.FilterDescendantsInstances = { player.Character, part }
-
-	local hit = workspace:Raycast(unitRay.Origin, unitRay.Direction * 500, raycastParams)
-
-	if not (hit and hit.Instance and hit.Instance:IsA("BasePart")) then
+	local target = mouse.Target
+	if not target or not target:IsA("BasePart") then
 		part.Transparency = 1
 		self.isValid = false
 		self.targetPosition = nil
 		return
 	end
 
+	-- Convertir NormalId (Top/Bottom/Front/...) a world-space Vector3.
+	-- target.CFrame:VectorToWorldSpace transforma el normal local de la cara
+	-- al mundo, respetando cualquier rotación del part.
+	local localNormal = Vector3.FromNormalId(mouse.TargetSurface)
+	local worldNormal = target.CFrame:VectorToWorldSpace(localNormal)
+	local hitPosition = mouse.Hit.Position
+
+	-- Algoritmo Minecraft auténtico:
+	--   Si el hit es un bloque placeado → ignorar hit.Position, snapped =
+	--   centro(target) + normal*size. La celda adyacente es siempre exacta.
+	--   Si el hit es mundo (baseplate, etc.) → snap del rawTarget porque no hay
+	--   "celda" definida en el target.
 	local size = GameConfig.BUILD.BLOCK_SIZE
-	local rawTarget = hit.Position + (hit.Normal * (size / 2))
-	local snapped = self.predictor:Snap(rawTarget)
+	local snapped: Vector3
+	if target:GetAttribute("IsBlock") then
+		snapped = target.Position + worldNormal * size
+	else
+		snapped = self.predictor:Snap(hitPosition + worldNormal * (size / 2))
+	end
 	self.targetPosition = snapped
 
 	if not self._firstPositioned then

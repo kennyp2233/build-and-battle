@@ -5,7 +5,7 @@
 local GameConfig = {
 	-- Tiempos de las fases del juego (en segundos)
 	PHASE_DURATIONS = {
-		Intermission = 15,
+		Intermission = 2,
 		Building = 100,
 		Battle = 120,
 	},
@@ -14,7 +14,11 @@ local GameConfig = {
 	BUILD = {
 		MAX_PLACEMENT_DISTANCE = 20,
 		BLOCK_SIZE = 4,
-		GRID_ORIGIN = Vector3.new(0, 0, 0),
+		-- GRID_ORIGIN.Y = BLOCK_SIZE/2 alinea el bottom del primer nivel de celdas
+		-- con Y=0 (el top del baseplate). Sin este offset los bloques flotan
+		-- BLOCK_SIZE/2 studs sobre el suelo. X/Z=0 mantienen las columnas
+		-- centradas en el origen del mapa.
+		GRID_ORIGIN = Vector3.new(0, 2, 0),
 		-- Cooldown único leído por cliente (rate guard) y server (validación autoritativa).
 		PLACEMENT_COOLDOWN = 0.2,
 	},
