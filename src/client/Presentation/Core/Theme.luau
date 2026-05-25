@@ -52,6 +52,7 @@ local Theme = {
 		md = 18,
 		lg = 22,
 		xl = 28,
+		xxl = 36,
 		huge = 52,
 	},
 
