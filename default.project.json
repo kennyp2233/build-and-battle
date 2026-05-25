@@ -6,6 +6,10 @@
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/shared"
+      },
+      "Packages": {
+        "$path": "Packages",
+        "$optional": true
       }
     },
 

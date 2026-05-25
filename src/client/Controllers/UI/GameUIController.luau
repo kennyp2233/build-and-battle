@@ -23,7 +23,7 @@ function GameUIController.new(gameView, network)
 	self.network = network
 	self.maid = Maid.new()
 
-	self.gameStateUIController = GameStateUIController.new(gameView.gameStateHUD)
+	self.gameStateUIController = GameStateUIController.new(gameView)
 
 	self.maid:Give(self.network:On(Events.GameStateChanged, function(state, endTimestamp, round)
 		self.gameStateUIController:OnStateChanged(state, endTimestamp, round)

@@ -1,36 +1,53 @@
 -- Badge.luau
--- Etiqueta visual con borde y texto. Size override-able vía prop.
+-- React function component: etiqueta con texto. Acepta `labelRef` para tweens
+-- imperativos del bgColor/textColor por el caller.
 
-local RoUI = require(script.Parent.Parent.Parent.Core.RoUI)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local React = require(ReplicatedStorage.Packages.React)
 local Theme = require(script.Parent.Parent.Parent.Core.Theme)
+
+local e = React.createElement
 
 export type BadgeProps = {
 	text: string,
 	bgColor: Color3?,
 	textColor: Color3?,
 	size: UDim2?,
+	automaticSize: Enum.AutomaticSize?,
 	layoutOrder: number?,
-	name: string?,
+	labelRef: any?, -- React.Ref<TextLabel>
 }
 
-local function Badge(props: BadgeProps): TextLabel
-	return RoUI.TextLabel({
-		Name = props.name or "Badge",
+local function Badge(props: BadgeProps)
+	return e("TextLabel", {
+		Name = "Badge",
+		ref = props.labelRef,
 		Text = props.text,
-		Size = props.size or UDim2.new(0.38, 0, 1, 0),
-		LayoutOrder = props.layoutOrder or 0,
+		Size = props.size or UDim2.new(0, 0, 1, 0),
+		AutomaticSize = props.automaticSize or Enum.AutomaticSize.X,
 		BackgroundColor3 = props.bgColor or Theme.ProgressBG,
 		TextColor3 = props.textColor or Theme.TextMain,
 		Font = Theme.Font,
 		TextSize = Theme.TextSize.md,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		children = {
-			RoUI.corner(Theme.Radius.md),
-			RoUI.stroke(Theme.Stroke.thin, Theme.CardStroke, 0.4),
-			-- Padding horizontal generoso: imprescindible con AutomaticSize.X
-			-- para que el texto no toque los corners.
-			RoUI.paddingCustom(12, 12, 4, 4),
-		},
+		LayoutOrder = props.layoutOrder or 0,
+		BorderSizePixel = 0,
+	}, {
+		Corner = e("UICorner", {
+			CornerRadius = UDim.new(0, Theme.Radius.md),
+		}),
+		Stroke = e("UIStroke", {
+			Color = Theme.CardStroke,
+			Thickness = Theme.Stroke.thin,
+			Transparency = 0.4,
+		}),
+		Padding = e("UIPadding", {
+			PaddingLeft = UDim.new(0, 12),
+			PaddingRight = UDim.new(0, 12),
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 4),
+		}),
 	})
 end
 
