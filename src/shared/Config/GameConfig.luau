@@ -5,7 +5,7 @@
 local GameConfig = {
 	-- Tiempos de las fases del juego (en segundos)
 	PHASE_DURATIONS = {
-		Intermission = 1,
+		Intermission = 15,
 		Building = 100,
 		Battle = 120,
 	},
@@ -14,9 +14,9 @@ local GameConfig = {
 	BUILD = {
 		MAX_PLACEMENT_DISTANCE = 20,
 		BLOCK_SIZE = 4,
-		MIN_BLOCK_SEPARATION = 4,
-		GRID_SNAP_SIZE = 4,
 		GRID_ORIGIN = Vector3.new(0, 0, 0),
+		-- Cooldown único leído por cliente (rate guard) y server (validación autoritativa).
+		PLACEMENT_COOLDOWN = 0.2,
 	},
 
 	-- Tipos de bloques y sus propiedades

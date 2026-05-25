@@ -12,7 +12,10 @@
 --   args: (position: Vector3, blockType: string)
 --
 -- BlockPlaced (S→C, all)
---   args: (id: string, position: Vector3, blockType: string, owner: string)
+--   args: (id: string, position: Vector3, blockType: string, ownerId: number)
+--
+-- BlocksCleared (S→C, all)
+--   args: ()
 --
 -- PlaceBlockRejected (S→C, requesting player only)
 --   args: (reason: string)
@@ -21,6 +24,7 @@ local Events = {
 	GameStateChanged = "GameStateChanged",
 	PlaceBlockRequest = "PlaceBlockRequest",
 	BlockPlaced = "BlockPlaced",
+	BlocksCleared = "BlocksCleared",
 	PlaceBlockRejected = "PlaceBlockRejected",
 }
 
@@ -28,6 +32,7 @@ Events.All = {
 	Events.GameStateChanged,
 	Events.PlaceBlockRequest,
 	Events.BlockPlaced,
+	Events.BlocksCleared,
 	Events.PlaceBlockRejected,
 }
 

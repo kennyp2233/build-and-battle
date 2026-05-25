@@ -1,6 +1,7 @@
 -- BuildService.luau
--- Servidor-only. Mantiene la lista autoritativa de bloques colocados y su representación
--- física en workspace. Notifica a los clientes vía ServerNetwork con BlockPlaced.
+-- Lista autoritativa de bloques + representación física. Indexa por celda de
+-- grid (Grid.CellKey) para que la validación de ocupación sea determinista y
+-- coincida con la del cliente bit-a-bit.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -8,6 +9,7 @@ local Block = require(ReplicatedStorage.Shared.Entities.Block)
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Events = require(ReplicatedStorage.Shared.Network.Events)
 local Result = require(ReplicatedStorage.Shared.Utils.Result)
+local Grid = require(ReplicatedStorage.Shared.Utils.Grid)
 local Logger = require(ReplicatedStorage.Shared.Utils.Logger)
 
 local logger = Logger.new("BuildService")
@@ -19,12 +21,21 @@ function BuildService.new(network)
 	assert(network, "BuildService requires a ServerNetwork instance")
 	local self = setmetatable({}, BuildService)
 	self.network = network
-	self.placedBlocks = {}
-	self.blockParts = {}
+	self.placedBlocks = {} -- [id] = Block
+	self.blockParts = {} -- [id] = Part
+	self.cellOwners = {} -- [cellKey] = id   (índice rápido por celda)
 	return self
 end
 
-function BuildService:CanPlaceBlock(position: Vector3, player: Player)
+local function snapToGrid(position: Vector3): Vector3
+	return Grid.Snap(position, GameConfig.BUILD.BLOCK_SIZE, GameConfig.BUILD.GRID_ORIGIN)
+end
+
+local function cellKey(position: Vector3): string
+	return Grid.CellKey(position, GameConfig.BUILD.BLOCK_SIZE, GameConfig.BUILD.GRID_ORIGIN)
+end
+
+function BuildService:CanPlaceBlock(snappedPosition: Vector3, player: Player)
 	if not player or not player:IsA("Player") then
 		return Result.Err("Invalid player")
 	end
@@ -34,17 +45,14 @@ function BuildService:CanPlaceBlock(position: Vector3, player: Player)
 		return Result.Err("Player character not found")
 	end
 
-	local distance = (position - character.HumanoidRootPart.Position).Magnitude
+	local distance = (snappedPosition - character.HumanoidRootPart.Position).Magnitude
 	local maxDistance = GameConfig.BUILD.MAX_PLACEMENT_DISTANCE
 	if distance > maxDistance then
 		return Result.Err(string.format("Too far away (max: %d studs)", maxDistance))
 	end
 
-	local minSeparation = GameConfig.BUILD.MIN_BLOCK_SEPARATION
-	for _, block in pairs(self.placedBlocks) do
-		if (block.position - position).Magnitude < minSeparation then
-			return Result.Err("Block too close to another block")
-		end
+	if self.cellOwners[cellKey(snappedPosition)] then
+		return Result.Err("Cell already occupied")
 	end
 
 	return Result.Ok(true)
@@ -55,24 +63,28 @@ function BuildService:PlaceBlock(position: Vector3, blockType: Block.BlockType, 
 		return Result.Err("Invalid block type")
 	end
 
-	local canPlaceResult = self:CanPlaceBlock(position, player)
+	-- Snap autoritativo: el cliente envía una posición ya snapeada, pero re-snapeamos
+	-- por defensa contra clientes manipulados.
+	local snapped = snapToGrid(position)
+
+	local canPlaceResult = self:CanPlaceBlock(snapped, player)
 	if Result.IsErr(canPlaceResult) then
-		return Result.Err(Result.UnwrapErr(canPlaceResult))
+		return canPlaceResult
 	end
 
-	local block = Block.new(position, blockType, player.Name)
-	self.placedBlocks[block.id] = block
-
+	local block = Block.new(snapped, blockType, player.UserId)
 	local part = self:CreateBlockPart(block, blockType)
 	if not part then
-		self.placedBlocks[block.id] = nil
 		return Result.Err("Failed to create block part")
 	end
+
+	self.placedBlocks[block.id] = block
 	self.blockParts[block.id] = part
+	self.cellOwners[cellKey(snapped)] = block.id
 
-	self.network:FireAll(Events.BlockPlaced, block.id, position, blockType, player.Name)
+	self.network:FireAll(Events.BlockPlaced, block.id, snapped, blockType, player.UserId)
 
-	logger:Info("Block placed: %s by %s", block.id, player.Name)
+	logger:Info("Block placed: %s by userId=%d", block.id, player.UserId)
 	return Result.Ok(block)
 end
 
@@ -83,9 +95,10 @@ function BuildService:CreateBlockPart(block, blockType: Block.BlockType): Part?
 		return nil
 	end
 
+	local size = GameConfig.BUILD.BLOCK_SIZE
 	local part = Instance.new("Part")
 	part.Name = block.id
-	part.Size = Vector3.new(GameConfig.BUILD.BLOCK_SIZE, GameConfig.BUILD.BLOCK_SIZE, GameConfig.BUILD.BLOCK_SIZE)
+	part.Size = Vector3.new(size, size, size)
 	part.Position = block.position
 	part.Anchored = true
 	part.CanCollide = true
@@ -93,7 +106,7 @@ function BuildService:CreateBlockPart(block, blockType: Block.BlockType): Part?
 	part.Material = blockProperties.Material
 
 	part:SetAttribute("IsBlock", true)
-	part:SetAttribute("BlockOwner", block.owner)
+	part:SetAttribute("BlockOwnerId", block.ownerId)
 	part:SetAttribute("BlockType", blockType)
 	part:SetAttribute("BlockHealth", blockProperties.Health)
 
@@ -102,26 +115,19 @@ function BuildService:CreateBlockPart(block, blockType: Block.BlockType): Part?
 end
 
 function BuildService:ClearBlocks()
-	local clearedCount = 0
-
+	local count = 0
 	for _, part in pairs(self.blockParts) do
-		if part and part.Parent then
+		if part.Parent then
 			part:Destroy()
-			clearedCount += 1
+			count += 1
 		end
 	end
-
-	-- Limpia huérfanos que pudieran quedar (p.ej. tras un crash recargado)
-	for _, part in ipairs(workspace:GetDescendants()) do
-		if part:IsA("BasePart") and part:GetAttribute("IsBlock") then
-			part:Destroy()
-			clearedCount += 1
-		end
-	end
-
 	self.placedBlocks = {}
 	self.blockParts = {}
-	logger:Info("Cleared %d blocks", clearedCount)
+	self.cellOwners = {}
+
+	self.network:FireAll(Events.BlocksCleared)
+	logger:Info("Cleared %d blocks", count)
 end
 
 function BuildService:GetBlockCount(): number
@@ -132,10 +138,10 @@ function BuildService:GetBlockCount(): number
 	return count
 end
 
-function BuildService:GetPlayerBlocks(playerName: string): { Block.Block }
+function BuildService:GetPlayerBlocks(ownerId: number): { Block.Block }
 	local playerBlocks = {}
 	for _, block in pairs(self.placedBlocks) do
-		if block.owner == playerName then
+		if block.ownerId == ownerId then
 			table.insert(playerBlocks, block)
 		end
 	end

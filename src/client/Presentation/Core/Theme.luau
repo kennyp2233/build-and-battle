@@ -89,14 +89,6 @@ local Theme = {
 			icon = "⚔️",
 			subtitle = "Eliminate your opponents",
 		},
-		Ended = {
-			accent = Color3.fromRGB(120, 126, 134),
-			accentGlow = Color3.fromRGB(160, 166, 174),
-			badgeBg = Color3.fromRGB(40, 42, 48),
-			badgeText = Color3.fromRGB(220, 222, 226),
-			icon = "🏁",
-			subtitle = "Round complete",
-		},
 	},
 }
 

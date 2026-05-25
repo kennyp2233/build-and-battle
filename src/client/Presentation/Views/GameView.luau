@@ -1,7 +1,6 @@
 -- GameView.luau
--- Owns el ReactRoblox root y el state del HUD. Los controllers llaman a
--- UpdateState/UpdateTimer y GameView re-renderea el componente React con las
--- nuevas props — React se encarga del diff.
+-- Wrapper delgado: monta el árbol React y expone el store al exterior. No
+-- mantiene state propio — React tiene el state, el store es el bus de updates.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,7 +8,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local React = require(ReplicatedStorage.Packages.React)
 local ReactRoblox = require(ReplicatedStorage.Packages.ReactRoblox)
 
-local GameStateHUD = require(script.Parent.Parent.Components.Game.GameState.GameStateHUD)
+local HudStore = require(script.Parent.Parent.Stores.HudStore)
+local App = require(script.Parent.App)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -26,50 +26,32 @@ function GameView.new()
 	self.screenGui.IgnoreGuiInset = true
 	self.screenGui.Parent = playerGui
 
-	self.root = ReactRoblox.createRoot(self.screenGui)
-
-	self.state = {
+	self.store = HudStore.new({
 		state = "Intermission",
 		timer = 30,
-		round = nil :: number?,
+		round = nil,
 		maxTimer = 30,
 		lowTimeThreshold = 10,
-	}
+	})
 
-	self:_render()
+	self.root = ReactRoblox.createRoot(self.screenGui)
+	self.root:render(React.createElement(App, { store = self.store }))
+
 	return self
 end
 
-function GameView:_render()
-	self.root:render(React.createElement(GameStateHUD, self.state))
-end
-
-function GameView:UpdateState(newState: string, timer: number, round: number?, maxTimer: number?)
-	self.state = {
-		state = newState,
-		timer = timer,
-		round = round,
-		maxTimer = maxTimer or timer,
-		lowTimeThreshold = self.state.lowTimeThreshold,
-	}
-	self:_render()
-end
-
-function GameView:UpdateTimer(timer: number, maxTimer: number?)
-	self.state = {
-		state = self.state.state,
-		timer = timer,
-		round = self.state.round,
-		maxTimer = maxTimer or self.state.maxTimer,
-		lowTimeThreshold = self.state.lowTimeThreshold,
-	}
-	self:_render()
+function GameView:GetStore()
+	return self.store
 end
 
 function GameView:Destroy()
 	if self.root then
 		self.root:unmount()
 		self.root = nil
+	end
+	if self.store then
+		self.store:Destroy()
+		self.store = nil
 	end
 	if self.screenGui then
 		self.screenGui:Destroy()

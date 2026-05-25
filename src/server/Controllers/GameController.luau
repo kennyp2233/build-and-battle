@@ -1,6 +1,7 @@
 -- GameController.luau
--- Orquestador del servidor: bucle de fases, hooks de jugador, ruteo de requests del cliente.
--- Network y servicios se inyectan; las conexiones se gestionan vía Maid.
+-- Orquestador del servidor: bucle de fases, hooks de jugador, ruteo de requests.
+-- Único owner de currentGameState. GameStateService son funciones de broadcast,
+-- no guarda copia paralela.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,29 +13,29 @@ local Result = require(ReplicatedStorage.Shared.Utils.Result)
 local Maid = require(ReplicatedStorage.Shared.Utils.Maid)
 local Logger = require(ReplicatedStorage.Shared.Utils.Logger)
 
+local GameStateService = require(script.Parent.Parent.Services.GameStateService)
 local ChangeGameState = require(script.Parent.Parent.UseCases.ChangeGameState)
 local PlaceBlock = require(script.Parent.Parent.UseCases.PlaceBlock)
-local BuildTool = require(script.Parent.Parent.Entities.BuildTool)
+local BuildTool = require(script.Parent.Parent.Factories.BuildTool)
 
 local logger = Logger.new("GameController")
 
 local CHARACTER_WAIT_TIMEOUT = 5
+local PHASE_POLL_INTERVAL = 0.1
 
 local GameController = {}
 GameController.__index = GameController
 
-function GameController.new(gameStateService, buildService, network)
+function GameController.new(buildService, network)
 	assert(network, "GameController requires a ServerNetwork instance")
 	local self = setmetatable({}, GameController)
 
-	self.gameStateService = gameStateService
 	self.buildService = buildService
 	self.network = network
 
-	self.changeGameState = ChangeGameState.new(gameStateService)
-	self.placeBlock = PlaceBlock.new(buildService)
+	self.placeBlock = PlaceBlock(buildService)
 
-	self.currentGameState = nil
+	self.currentGameState = nil :: any
 	self.maid = Maid.new()
 	self.playerMaids = {} -- [userId] = Maid
 	self.stateLoopRunning = false
@@ -43,8 +44,9 @@ function GameController.new(gameStateService, buildService, network)
 end
 
 function GameController:Init()
-	self.currentGameState = GameState.new("Intermission", GameConfig.PHASE_DURATIONS.Intermission, 0)
-	self.gameStateService:UpdateState(self.currentGameState)
+	-- Inicial: GameState con timer expirado para que cualquier early-joiner
+	-- vea un valor coherente hasta que el state loop arranque y emita Intermission.
+	self.currentGameState = GameState.new("Intermission", 0, 0)
 
 	self:SetupNetworkEvents()
 	self:SetupPlayerHandling()
@@ -57,7 +59,6 @@ function GameController:SetupNetworkEvents()
 		if Result.IsErr(result) then
 			local reason = Result.UnwrapErr(result)
 			logger:Warn("Place rejected for %s: %s", player.Name, reason)
-			-- Avisarle al cliente para que pueda dar feedback visual/sonoro
 			self.network:FireClient(Events.PlaceBlockRejected, player, reason)
 		end
 	end))
@@ -71,15 +72,18 @@ function GameController:_attachPlayer(player: Player)
 	local pmaid = Maid.new()
 	self.playerMaids[player.UserId] = pmaid
 
-	if self.currentGameState then
-		self.gameStateService:BroadcastStateToPlayer(self.currentGameState, player)
+	GameStateService.BroadcastToPlayer(self.network, self.currentGameState, player)
+
+	-- Bug #1: si el jugador entra durante Building, dale la tool inmediatamente
+	-- en lugar de esperar al siguiente CharacterAdded.
+	if player.Character and self.currentGameState.currentState == "Building" then
+		self:GiveBuildToolToPlayer(player)
 	end
 
 	pmaid:Give(player.CharacterAdded:Connect(function(character)
-		if not (self.currentGameState and self.currentGameState.currentState == "Building") then
+		if self.currentGameState.currentState ~= "Building" then
 			return
 		end
-		-- Esperar al HRP en lugar de un task.wait mágico
 		local hrp = character:WaitForChild("HumanoidRootPart", CHARACTER_WAIT_TIMEOUT)
 		if not hrp then
 			logger:Warn("Character of %s never produced HumanoidRootPart", player.Name)
@@ -111,6 +115,22 @@ function GameController:SetupPlayerHandling()
 	end
 end
 
+-- Espera hasta currentGameState.endTimestamp (no a un task.wait fijo) para
+-- que el final del countdown del cliente coincida con el cambio de fase real.
+function GameController:_waitUntilPhaseEnd()
+	while self.stateLoopRunning do
+		local remaining = self.currentGameState.endTimestamp - workspace:GetServerTimeNow()
+		if remaining <= 0 then
+			break
+		end
+		task.wait(math.min(remaining, PHASE_POLL_INTERVAL))
+	end
+end
+
+function GameController:_transition(phase, duration)
+	ChangeGameState(self.network, self.currentGameState, phase, duration)
+end
+
 function GameController:StartStateLoop()
 	self.stateLoopRunning = true
 	self.maid:Give(function()
@@ -119,20 +139,26 @@ function GameController:StartStateLoop()
 
 	task.spawn(function()
 		while self.stateLoopRunning do
-			self.changeGameState:Execute(self.currentGameState, "Intermission", GameConfig.PHASE_DURATIONS.Intermission)
+			self:_transition("Intermission", GameConfig.PHASE_DURATIONS.Intermission)
 			self:RemoveBuildTools()
-			task.wait(GameConfig.PHASE_DURATIONS.Intermission)
-			if not self.stateLoopRunning then break end
+			self:_waitUntilPhaseEnd()
+			if not self.stateLoopRunning then
+				break
+			end
 
-			self.changeGameState:Execute(self.currentGameState, "Building", GameConfig.PHASE_DURATIONS.Building)
+			self:_transition("Building", GameConfig.PHASE_DURATIONS.Building)
 			self:GiveBuildTools()
-			task.wait(GameConfig.PHASE_DURATIONS.Building)
-			if not self.stateLoopRunning then break end
+			self:_waitUntilPhaseEnd()
+			if not self.stateLoopRunning then
+				break
+			end
 
-			self.changeGameState:Execute(self.currentGameState, "Battle", GameConfig.PHASE_DURATIONS.Battle)
+			self:_transition("Battle", GameConfig.PHASE_DURATIONS.Battle)
 			self:RemoveBuildTools()
-			task.wait(GameConfig.PHASE_DURATIONS.Battle)
-			if not self.stateLoopRunning then break end
+			self:_waitUntilPhaseEnd()
+			if not self.stateLoopRunning then
+				break
+			end
 
 			self.buildService:ClearBlocks()
 		end
@@ -157,8 +183,10 @@ function GameController:GiveBuildToolToPlayer(player: Player): boolean
 	if not player or not player:IsA("Player") then
 		return false
 	end
-	if player.Backpack:FindFirstChild("BuildTool")
-		or (player.Character and player.Character:FindFirstChild("BuildTool")) then
+	if
+		player.Backpack:FindFirstChild("BuildTool")
+		or (player.Character and player.Character:FindFirstChild("BuildTool"))
+	then
 		return false
 	end
 

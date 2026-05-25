@@ -1,6 +1,6 @@
 -- GameUIController.luau
--- Orquestador de UI del cliente. Escucha eventos del servidor vía ClientNetwork
--- y los delega a los sub-controladores especializados.
+-- Orquestador de UI: enruta eventos de red a los sub-controllers, que a su vez
+-- escriben al store del HUD.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -23,7 +23,7 @@ function GameUIController.new(gameView, network)
 	self.network = network
 	self.maid = Maid.new()
 
-	self.gameStateUIController = GameStateUIController.new(gameView)
+	self.gameStateUIController = GameStateUIController.new(gameView:GetStore())
 
 	self.maid:Give(self.network:On(Events.GameStateChanged, function(state, endTimestamp, round)
 		self.gameStateUIController:OnStateChanged(state, endTimestamp, round)

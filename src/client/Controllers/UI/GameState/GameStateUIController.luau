@@ -1,6 +1,6 @@
 -- GameStateUIController.luau
--- Mantiene el countdown local sincronizado al servidor y empuja state al GameView,
--- que se encarga del re-render React.
+-- Mantiene el countdown local sincronizado al servidor y empuja state al store
+-- del HUD. React se encarga del re-render via Subscribe.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -12,18 +12,14 @@ local logger = Logger.new("GameStateUIController")
 local GameStateUIController = {}
 GameStateUIController.__index = GameStateUIController
 
-function GameStateUIController.new(gameView)
+function GameStateUIController.new(store)
 	local self = setmetatable({}, GameStateUIController)
 
-	self.gameView = gameView
+	self.store = store
 	self.countdownTask = nil
-	self.currentState = {
-		state = nil :: string?,
-		timer = 0,
-		round = nil :: number?,
-		maxTimer = 0,
-		endTimestamp = 0,
-	}
+	self.lastTimerEmitted = -1
+	self.currentEndTimestamp = 0
+	self.currentMaxTimer = 0
 
 	return self
 end
@@ -31,20 +27,25 @@ end
 function GameStateUIController:OnStateChanged(state: string, endTimestamp: number, round: number?)
 	local maxTimer = GameConfig.PHASE_DURATIONS[state] or 0
 	local serverTime = workspace:GetServerTimeNow()
-	local remainingTime = math.max(0, endTimestamp - serverTime)
+	local remainingSeconds = math.ceil(math.max(0, endTimestamp - serverTime))
 
-	self.currentState.state = state
-	self.currentState.endTimestamp = endTimestamp
-	self.currentState.round = round
-	self.currentState.maxTimer = maxTimer
+	self.currentEndTimestamp = endTimestamp
+	self.currentMaxTimer = maxTimer
+	self.lastTimerEmitted = remainingSeconds
 
-	logger:Debug("State: %s, remaining: %.1fs, maxTimer: %d", state, remainingTime, maxTimer)
+	logger:Debug("State: %s, remaining: %ds, maxTimer: %d", state, remainingSeconds, maxTimer)
 
-	self.gameView:UpdateState(state, math.ceil(remainingTime), round, maxTimer)
-	self:_startCountdown(endTimestamp, maxTimer)
+	self.store:Update({
+		state = state,
+		timer = remainingSeconds,
+		round = round,
+		maxTimer = maxTimer,
+	})
+
+	self:_startCountdown()
 end
 
-function GameStateUIController:_startCountdown(endTimestamp: number, maxTimer: number)
+function GameStateUIController:_startCountdown()
 	if self.countdownTask then
 		task.cancel(self.countdownTask)
 		self.countdownTask = nil
@@ -53,18 +54,20 @@ function GameStateUIController:_startCountdown(endTimestamp: number, maxTimer: n
 	self.countdownTask = task.spawn(function()
 		while true do
 			task.wait(0.1)
-			local serverTime = workspace:GetServerTimeNow()
-			local remaining = endTimestamp - serverTime
+			local remaining = self.currentEndTimestamp - workspace:GetServerTimeNow()
 
 			if remaining <= 0 then
-				self.gameView:UpdateTimer(0, maxTimer)
+				if self.lastTimerEmitted ~= 0 then
+					self.lastTimerEmitted = 0
+					self.store:Update({ timer = 0 })
+				end
 				break
 			end
 
 			local secondsRemaining = math.ceil(remaining)
-			if secondsRemaining ~= self.currentState.timer then
-				self.currentState.timer = secondsRemaining
-				self.gameView:UpdateTimer(secondsRemaining, maxTimer)
+			if secondsRemaining ~= self.lastTimerEmitted then
+				self.lastTimerEmitted = secondsRemaining
+				self.store:Update({ timer = secondsRemaining })
 			end
 		end
 	end)

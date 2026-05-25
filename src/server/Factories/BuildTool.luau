@@ -1,6 +1,7 @@
 -- BuildTool.luau
--- Server-only builder: el servidor instancia esta Tool y la entrega al Backpack del jugador
--- durante la fase Building. Vive en server porque el cliente nunca debe instanciar Tools de gameplay.
+-- Server-only factory: instancia la Tool que el servidor entrega al Backpack
+-- del jugador durante la fase Building. No es una entidad de dominio — solo
+-- compone un Instance Tool, por eso vive en Factories/.
 
 local BuildTool = {}
 

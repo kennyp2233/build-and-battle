@@ -2,7 +2,7 @@
 -- Almacena un endTimestamp absoluto (workspace:GetServerTimeNow()) en lugar de un
 -- timer decreciente, para que los late-joiners reciban el tiempo restante correcto.
 
-export type GameStateType = "Intermission" | "Building" | "Battle" | "Ended"
+export type GameStateType = "Intermission" | "Building" | "Battle"
 
 export type GameState = {
 	currentState: GameStateType,
