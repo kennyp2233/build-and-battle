@@ -22,29 +22,17 @@ local function ProgressBar(props: ProgressBarProps)
 
 	return e("Frame", {
 		Name = "ProgressBar",
-		BackgroundColor3 = Theme.ProgressBG,
+		BackgroundColor3 = Theme.Retro.InsetBG,
 		Size = UDim2.new(1, 0, 0, props.height or 6),
 		BorderSizePixel = 0,
 		LayoutOrder = props.layoutOrder or 0,
 	}, {
-		Corner = e("UICorner", {
-			CornerRadius = UDim.new(0, Theme.Radius.sm),
-		}),
-		Stroke = e("UIStroke", {
-			Color = Theme.CardStroke,
-			Thickness = Theme.Stroke.thin,
-			Transparency = 0.4,
-		}),
 		Fill = e("Frame", {
 			Name = "Fill",
 			ref = props.fillRef,
 			BackgroundColor3 = props.color,
 			Size = UDim2.new(progress, 0, 1, 0),
 			BorderSizePixel = 0,
-		}, {
-			Corner = e("UICorner", {
-				CornerRadius = UDim.new(0, Theme.Radius.sm),
-			}),
 		}),
 	})
 end

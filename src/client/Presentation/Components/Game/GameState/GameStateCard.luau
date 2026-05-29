@@ -1,15 +1,14 @@
 -- GameStateCard.luau
--- React function component: HUD compacto en una sola fila.
+-- React function component: contenido del notch HUD (retro Studio Grey).
 --
--- Estructura:
+-- Layout single-row:
 --   ┌──────────────────────────────────────────────────┐
---   │ 🔨 BUILDING       02:32           ROUND 1         │  ← una fila
---   │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━░░░       │  ← progress fino
+--   │ [🔨 BUILDING]      02:32          ROUND 1         │
+--   │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░                │
 --   └──────────────────────────────────────────────────┘
 --
--- El time queda prominente sin convertirse en banner. La fase se identifica
--- por el badge tinted + glow de color. El subtítulo se eliminó: si lo querés
--- de vuelta, hace falta un overlay separado que aparezca solo al cambio de fase.
+-- BG transparente — el wrapper (GameStateHUD) provee el panel charcoal.
+-- Font SourceSansBold + Code para el timer (mono, vibe terminal/Studio).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -39,21 +38,17 @@ export type GameStateCardProps = {
 local function GameStateCard(props: GameStateCardProps)
 	local phase = Theme.getPhase(props.state)
 	local isLowTime = props.timer <= props.lowTimeThreshold and props.timer > 0
-	local timerColor = isLowTime and Theme.LowTime or Theme.TextMain
+	local timerColor = isLowTime and Theme.LowTime or Theme.Retro.TextMain
 	local progress = math.clamp(props.timer / math.max(props.maxTimer, 1), 0, 1)
 
-	local glowRef = React.useRef(nil :: UIStroke?)
 	local badgeRef = React.useRef(nil :: TextLabel?)
 	local fillRef = React.useRef(nil :: Frame?)
 	local timerScaleRef = React.useRef(nil :: UIScale?)
 
-	-- Tween de colores al cambiar fase
+	-- Tween de colores al cambiar fase (badge + progress fill)
 	React.useEffect(function()
 		local p = Theme.getPhase(props.state)
 		local info = TweenInfo.new(TRANSITION_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		if glowRef.current then
-			TweenService:Create(glowRef.current, info, { Color = p.accentGlow }):Play()
-		end
 		if badgeRef.current then
 			TweenService:Create(badgeRef.current, info, {
 				BackgroundColor3 = p.badgeBg,
@@ -98,17 +93,12 @@ local function GameStateCard(props: GameStateCardProps)
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 	}, {
-		Corner = e("UICorner", { CornerRadius = UDim.new(0, Theme.Radius.lg) }),
-		Glow = e("UIStroke", {
-			ref = glowRef,
-			Color = phase.accentGlow,
-			Thickness = 2,
-			Transparency = 0.35,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		}),
+		-- Padding lateral = 16px > radio del notch (14px): la progress bar
+		-- nunca entra en la zona de curvatura de los corners inferiores.
+		-- PaddingBottom = 6 para idéntico cálculo vertical (seguro en z=córner).
 		Padding = e("UIPadding", {
-			PaddingTop = UDim.new(0, Theme.Spacing.md),
-			PaddingBottom = UDim.new(0, Theme.Spacing.md),
+			PaddingTop = UDim.new(0, Theme.Spacing.sm),
+			PaddingBottom = UDim.new(0, 6),
 			PaddingLeft = UDim.new(0, Theme.Spacing.lg),
 			PaddingRight = UDim.new(0, Theme.Spacing.lg),
 		}),
@@ -133,7 +123,9 @@ local function GameStateCard(props: GameStateCardProps)
 				BackgroundTransparency = 1,
 			}, {
 				Badge = e(Badge, {
-					text = phase.icon .. "  " .. props.state:upper(),
+					-- Solo texto — old Roblox no usaba emojis en UI.
+					-- Si querés cue visual por fase, usar un sprite/ImageLabel.
+					text = props.state:upper(),
 					bgColor = phase.badgeBg,
 					textColor = phase.badgeText,
 					labelRef = badgeRef,
@@ -148,8 +140,10 @@ local function GameStateCard(props: GameStateCardProps)
 				Size = UDim2.new(0, 140, 1, 0),
 				BackgroundTransparency = 1,
 				TextColor3 = timerColor,
-				Font = Enum.Font.RobotoMono,
-				TextSize = Theme.TextSize.xxl,
+				TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+				TextStrokeTransparency = 0.2,
+				Font = Theme.FontMono,
+				TextSize = Theme.TextSize.xl,
 				TextXAlignment = Enum.TextXAlignment.Center,
 				TextYAlignment = Enum.TextYAlignment.Center,
 			}, {
@@ -161,11 +155,15 @@ local function GameStateCard(props: GameStateCardProps)
 				Text = props.round and ("ROUND " .. props.round) or "",
 				AnchorPoint = Vector2.new(1, 0.5),
 				Position = UDim2.new(1, 0, 0.5, 0),
-				Size = UDim2.new(0, 80, 0, 22),
+				Size = UDim2.new(0, 90, 0, 22),
 				BackgroundTransparency = 1,
-				TextColor3 = Theme.TextSub,
-				Font = Theme.FontCondensed,
-				TextSize = Theme.TextSize.xs,
+				-- Amarillo Robux-style + outline negro nativo: signature
+				-- retro de leaderstats/chat names del Roblox viejo
+				TextColor3 = Theme.Retro.TextAccent,
+				TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+				TextStrokeTransparency = 0.2,
+				Font = Theme.Font,
+				TextSize = Theme.TextSize.sm,
 				TextXAlignment = Enum.TextXAlignment.Right,
 			}),
 		}),
@@ -173,7 +171,7 @@ local function GameStateCard(props: GameStateCardProps)
 		Progress = e(ProgressBar, {
 			progress = progress,
 			color = phase.accent,
-			height = 4,
+			height = 8,
 			layoutOrder = 2,
 			fillRef = fillRef,
 		}),

@@ -1,5 +1,7 @@
 -- Badge.luau
--- React function component: etiqueta con texto. Acepta `labelRef` para tweens
+-- React function component: etiqueta tipo botón retro Roblox (~2010 Studio).
+-- BG sólido + bevel 3D duro (highlight top/left + shadow bottom/right) + borde
+-- exterior dark 1px + esquinas cuadradas. Acepta `labelRef` para tweens
 -- imperativos del bgColor/textColor por el caller.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -28,25 +30,25 @@ local function Badge(props: BadgeProps)
 		AutomaticSize = props.automaticSize or Enum.AutomaticSize.X,
 		BackgroundColor3 = props.bgColor or Theme.ProgressBG,
 		TextColor3 = props.textColor or Theme.TextMain,
+		TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+		TextStrokeTransparency = 0.2,
 		Font = Theme.Font,
 		TextSize = Theme.TextSize.md,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		LayoutOrder = props.layoutOrder or 0,
 		BorderSizePixel = 0,
 	}, {
-		Corner = e("UICorner", {
-			CornerRadius = UDim.new(0, Theme.Radius.md),
-		}),
+		-- Sin UICorner — old Roblox UI era pixel-square
 		Stroke = e("UIStroke", {
-			Color = Theme.CardStroke,
-			Thickness = Theme.Stroke.thin,
-			Transparency = 0.4,
+			Color = Theme.Retro.BorderOuter,
+			Thickness = 1,
+			Transparency = 0,
 		}),
 		Padding = e("UIPadding", {
-			PaddingLeft = UDim.new(0, 12),
-			PaddingRight = UDim.new(0, 12),
-			PaddingTop = UDim.new(0, 4),
-			PaddingBottom = UDim.new(0, 4),
+			PaddingLeft = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 10),
+			PaddingTop = UDim.new(0, 3),
+			PaddingBottom = UDim.new(0, 3),
 		}),
 	})
 end

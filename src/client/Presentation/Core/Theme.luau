@@ -5,8 +5,9 @@
 
 local Theme = {
 	-- Tipografía
-	Font = Enum.Font.GothamBold,
-	FontCondensed = Enum.Font.Gotham,
+	Font = Enum.Font.SourceSansBold,
+	FontCondensed = Enum.Font.SourceSansSemibold,
+	FontMono = Enum.Font.Code,
 
 	-- Colores semánticos
 	Card = Color3.fromRGB(16, 17, 20),
@@ -14,6 +15,22 @@ local Theme = {
 	CardShadow = Color3.fromRGB(0, 0, 0),
 	TextMain = Color3.fromRGB(235, 238, 243),
 	TextSub = Color3.fromRGB(180, 186, 194),
+
+	-- Retro Studio Grey palette (HUD notch) — flavor 2010-2013
+	-- Panel charcoal solid + bevel duro (light top/left, dark bottom/right).
+	-- Pensado para el HUD notch; el resto de UI puede seguir usando Card/TextMain.
+	Retro = {
+		PanelBG = Color3.fromRGB(46, 46, 46),       -- charcoal sólido (sin gradiente)
+		PanelBGAlt = Color3.fromRGB(38, 38, 38),    -- variante más oscura
+		BorderOuter = Color3.fromRGB(14, 14, 14),   -- borde exterior duro (2px)
+		BevelLight = Color3.fromRGB(96, 96, 96),    -- highlight top/left
+		BevelDark = Color3.fromRGB(20, 20, 20),     -- shadow bottom/right
+		InsetBG = Color3.fromRGB(22, 22, 22),       -- bg hundido (progressbar track)
+		InsetBorder = Color3.fromRGB(8, 8, 8),      -- borde del inset
+		TextMain = Color3.fromRGB(242, 242, 242),
+		TextDim = Color3.fromRGB(170, 170, 170),
+		TextAccent = Color3.fromRGB(255, 213, 60),  -- amarillo Robux-style (acento opcional)
+	},
 
 	-- Estados / intent
 	Primary = Color3.fromRGB(80, 140, 255),
@@ -62,30 +79,32 @@ local Theme = {
 		thick = 3,
 	},
 
-	-- Paleta por fase del juego — usada para teñir el accent del HUD
-	-- (border glow, badge bg, banner subtitle) según la fase actual.
+	-- Paleta por fase — colores BrickColor-style (Roblox 2008-2013).
+	-- Más mate y saturado de forma "plástica", no neón ni gradient-vivo.
+	-- Referencias: "Bright blue" 13/105/172, "Br. yellowish green" 164/189/71,
+	-- "Bright red" 196/40/28.
 	Phase = {
 		Intermission = {
-			accent = Color3.fromRGB(80, 140, 255),
-			accentGlow = Color3.fromRGB(120, 170, 255),
-			badgeBg = Color3.fromRGB(30, 50, 100),
-			badgeText = Color3.fromRGB(200, 220, 255),
+			accent = Color3.fromRGB(13, 105, 172),       -- Bright blue
+			accentGlow = Color3.fromRGB(40, 130, 200),
+			badgeBg = Color3.fromRGB(13, 105, 172),
+			badgeText = Color3.fromRGB(245, 245, 245),
 			icon = "⏳",
 			subtitle = "Get ready for the next round",
 		},
 		Building = {
-			accent = Color3.fromRGB(0, 220, 130),
-			accentGlow = Color3.fromRGB(60, 240, 160),
-			badgeBg = Color3.fromRGB(20, 70, 50),
-			badgeText = Color3.fromRGB(200, 250, 220),
+			accent = Color3.fromRGB(164, 189, 71),       -- Br. yellowish green
+			accentGlow = Color3.fromRGB(190, 215, 100),
+			badgeBg = Color3.fromRGB(75, 151, 75),       -- Bright green (más saturado)
+			badgeText = Color3.fromRGB(245, 245, 245),
 			icon = "🔨",
 			subtitle = "Place blocks to defend your base",
 		},
 		Battle = {
-			accent = Color3.fromRGB(255, 77, 91),
-			accentGlow = Color3.fromRGB(255, 120, 130),
-			badgeBg = Color3.fromRGB(80, 30, 35),
-			badgeText = Color3.fromRGB(255, 210, 210),
+			accent = Color3.fromRGB(196, 40, 28),        -- Bright red
+			accentGlow = Color3.fromRGB(230, 80, 60),
+			badgeBg = Color3.fromRGB(196, 40, 28),
+			badgeText = Color3.fromRGB(245, 245, 245),
 			icon = "⚔️",
 			subtitle = "Eliminate your opponents",
 		},
