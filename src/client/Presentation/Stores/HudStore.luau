@@ -6,7 +6,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Signal = require(ReplicatedStorage.Shared.Utils.Signal)
+local Signal = require(ReplicatedStorage.Packages.Signal)
 
 export type HudState = {
 	state: string,
@@ -40,7 +40,12 @@ function HudStore:Update(partial: { [string]: any })
 end
 
 function HudStore:Subscribe(callback: (HudState) -> ()): () -> ()
-	return self._signal:Connect(callback)
+	-- sleitnick/signal:Connect devuelve una Connection (no una función disconnect).
+	-- Devolvemos un closure para mantener el contrato de Subscribe (cleanup de useEffect).
+	local connection = self._signal:Connect(callback)
+	return function()
+		connection:Disconnect()
+	end
 end
 
 function HudStore:Destroy()
