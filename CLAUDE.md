@@ -181,7 +181,12 @@ Y la cuenta inversa: costo de cada bloque, tiempo de placement, "rareza" en el i
 - Cualquier evento nuevo va a `shared/Network/Events.luau` con su contrato documentado en comentario.
 - Nuevos use cases server-side van en `server/UseCases/` como factory function si tienen estado, módulo de funciones si no.
 - UI nueva: componente React en `client/Presentation/Components/`, integración vía `HudStore` (no llamadas imperativas a la view).
-- Tests: el proyecto no tiene framework de tests configurado todavía. Cuando llegue el momento, probablemente TestEZ o Jest.luau.
+- Tests: **TestEZ** (dev-dependency de Wally, en `DevPackages/`). Los specs viven en `tests/` (`*.spec.luau`). Para correrlos:
+  1. `wally install` (trae TestEZ a `DevPackages/`).
+  2. `rojo build test.project.json --output test.rbxl`.
+  3. Abrir `test.rbxl` en Studio → Play → resultados en el Output.
+  El runner (`tests/runTests.server.luau`) y TestEZ **solo** se incluyen en `test.project.json`, nunca en el build de producción (`default.project.json`).
+  Cubierto hoy: `Grid` (determinismo snap/CellKey) y la validación de `PlaceBlock` (fase, payload, rate-limit). Testear lógica pura con mocks; no requiere correr el juego.
 
 ---
 
