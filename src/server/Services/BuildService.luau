@@ -148,6 +148,17 @@ function BuildService:GetPlayerBlocks(ownerId: number): { Block.Block }
 	return playerBlocks
 end
 
+-- Reenvía todos los bloques actuales a un jugador recién llegado para que su
+-- BuildPredictor (occupiedCells) arranque sincronizado. Los Parts ya replican
+-- nativamente vía workspace; esto solo alimenta la predicción cliente, evitando
+-- que el preview se pinte verde sobre celdas ya ocupadas. Reusa el evento
+-- BlockPlaced (mismo handler cliente) en lugar de un evento de snapshot nuevo.
+function BuildService:SendSnapshotToPlayer(player: Player)
+	for id, block in pairs(self.placedBlocks) do
+		self.network:FireClient(Events.BlockPlaced, player, id, block.position, block.blockType, block.ownerId)
+	end
+end
+
 function BuildService:Destroy()
 	self:ClearBlocks()
 end

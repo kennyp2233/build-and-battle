@@ -72,6 +72,10 @@ function GameController:_attachPlayer(player: Player)
 	self.playerMaids[player.UserId] = pmaid
 
 	GameStateService.BroadcastToPlayer(self.network, self.currentGameState, player)
+	-- Snapshot de bloques ya colocados: sin esto el predictor del late-joiner
+	-- arranca vacío y pinta verde sobre celdas ocupadas (los Parts se ven por
+	-- replicación nativa, pero la predicción cliente no los conoce).
+	self.buildService:SendSnapshotToPlayer(player)
 
 	-- Bug #1: si el jugador entra durante Building, dale la tool inmediatamente
 	-- en lugar de esperar al siguiente CharacterAdded.
