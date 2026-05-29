@@ -14,7 +14,6 @@ local Maid = require(ReplicatedStorage.Shared.Utils.Maid)
 local Logger = require(ReplicatedStorage.Shared.Utils.Logger)
 
 local GameStateService = require(script.Parent.Parent.Services.GameStateService)
-local ChangeGameState = require(script.Parent.Parent.UseCases.ChangeGameState)
 local PlaceBlock = require(script.Parent.Parent.UseCases.PlaceBlock)
 local BuildTool = require(script.Parent.Parent.Factories.BuildTool)
 
@@ -127,8 +126,21 @@ function GameController:_waitUntilPhaseEnd()
 	end
 end
 
-function GameController:_transition(phase, duration)
-	ChangeGameState(self.network, self.currentGameState, phase, duration)
+-- Aplica la transición de fase: muta el GameState (single source of truth) y
+-- broadcastea via GameStateService. Solo se llama desde el state loop con phases
+-- literales, así que no necesita validar el nombre de fase (no es input de red).
+function GameController:_transition(phase: GameState.GameStateType, duration: number)
+	local previousState = self.currentGameState.currentState
+
+	self.currentGameState:setState(phase)
+	self.currentGameState:setDuration(duration)
+	if phase == "Intermission" then
+		self.currentGameState:incrementRound()
+	end
+
+	GameStateService.Broadcast(self.network, self.currentGameState)
+
+	logger:Info("Game state: %s -> %s (duration: %ds)", previousState, phase, duration)
 end
 
 function GameController:StartStateLoop()
