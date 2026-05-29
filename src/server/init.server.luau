@@ -10,6 +10,7 @@ local Logger = require(ReplicatedStorage.Shared.Utils.Logger)
 local ServerNetwork = require(script.Network.ServerNetwork)
 local BuildService = require(script.Services.BuildService)
 local GameController = require(script.Controllers.GameController)
+local WorldMockup = require(script.Map.WorldMockup)
 
 Logger.configure({
 	enabled = GameConfig.DEBUG.ENABLED,
@@ -17,6 +18,15 @@ Logger.configure({
 })
 
 local logger = Logger.new("Server")
+
+-- 0. Mundo: generar el mapa antes que nada (spawns + lighting necesitan estar antes de PlayerAdded)
+logger:Info("Generating world…")
+local ok, err = pcall(WorldMockup.Generate)
+if ok then
+	logger:Info("World generated OK")
+else
+	logger:Error("World generation FAILED: %s", tostring(err))
+end
 
 -- 1. Network: crea los RemoteEvents (necesario antes de que clientes hagan WaitForChild)
 local network = ServerNetwork.new()
